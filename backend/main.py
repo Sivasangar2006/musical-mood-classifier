@@ -48,16 +48,16 @@ app = FastAPI(
 # These are DIFFERENT origins → browser would block the request.
 # The code below tells FastAPI to explicitly allow requests from your React app.
 
+_origins = ["http://localhost:5173", "http://localhost:3000"]
+if os.getenv("FRONTEND_URL"):
+    _origins.append(os.getenv("FRONTEND_URL"))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:3000",
-        os.getenv("FRONTEND_URL", ""),  # Set this in Render environment variables
-    ],
+    allow_origins=_origins,
     allow_credentials=True,
-    allow_methods=["*"],     # Allow GET, POST, DELETE, etc.
-    allow_headers=["*"],     # Allow any headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # ─────────────────────────────────────────────
