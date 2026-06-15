@@ -1,0 +1,48 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ── */
+body {
+  @apply bg-gray-950 text-gray-100 min-h-screen antialiased;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0f1117; }
+::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+
+/* ── Solid card utility (replaces glass) ── */
+.card {
+  @apply bg-gray-900 border border-gray-800 rounded-2xl;
+}
+
+/* ── Gradient text utility ── */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r;
+}
+
+/* ── Animated gradient background ── */
+.animated-gradient {
+  background-size: 300% 300%;
+  animation: gradientShift 6s ease infinite;
+}
+
+/* ── Equalizer bars ── */
+.eq-bar {
+  @apply w-1 rounded-full;
+  min-height: 4px;
+}
+
+/* ── Smooth section reveal ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(30px);
+  transition: opacity 0.7s ease-out, transform 0.7s ease-out;
+}
+.reveal.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
