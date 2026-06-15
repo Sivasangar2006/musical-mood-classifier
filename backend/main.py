@@ -51,9 +51,9 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # Alternative dev port
-        # Add your production URL here later, e.g. "https://moodclassifier.vercel.app"
+        "http://localhost:5173",
+        "http://localhost:3000",
+        os.getenv("FRONTEND_URL", ""),  # Set this in Render environment variables
     ],
     allow_credentials=True,
     allow_methods=["*"],     # Allow GET, POST, DELETE, etc.
