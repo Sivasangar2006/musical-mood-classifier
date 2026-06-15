@@ -49,8 +49,9 @@ app = FastAPI(
 # The code below tells FastAPI to explicitly allow requests from your React app.
 
 _origins = ["http://localhost:5173", "http://localhost:3000"]
-if os.getenv("FRONTEND_URL"):
-    _origins.append(os.getenv("FRONTEND_URL"))
+for _url in os.getenv("FRONTEND_URL", "").split(","):
+    if _url.strip():
+        _origins.append(_url.strip())
 
 app.add_middleware(
     CORSMiddleware,
