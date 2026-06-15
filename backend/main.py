@@ -48,10 +48,16 @@ app = FastAPI(
 # These are DIFFERENT origins → browser would block the request.
 # The code below tells FastAPI to explicitly allow requests from your React app.
 
-_origins = ["http://localhost:5173", "http://localhost:3000"]
+_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://musical-mood-classifier.vercel.app",
+    "https://musical-mood-classifier-git-main-sivasangar-as-projects.vercel.app",
+    "https://musical-mood-classifier-jfeu9k4nu-sivasangar-as-projects.vercel.app",
+]
 for _url in os.getenv("FRONTEND_URL", "").split(","):
-    if _url.strip():
-        _origins.append(_url.strip())
+    if _url.strip().rstrip("/"):
+        _origins.append(_url.strip().rstrip("/"))
 
 app.add_middleware(
     CORSMiddleware,
