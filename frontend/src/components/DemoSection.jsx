@@ -57,8 +57,9 @@ export default function DemoSection() {
       ([entry]) => {
         setVisible(entry.isIntersecting);
         if (entry.isIntersecting && audioRef.current && hasAudio) {
-          audioRef.current.play().catch(() => {});
-          setIsPlaying(true);
+          audioRef.current.play()
+            .then(() => setIsPlaying(true))
+            .catch(() => setIsPlaying(false));
         } else if (!entry.isIntersecting && audioRef.current) {
           audioRef.current.pause();
           setIsPlaying(false);
