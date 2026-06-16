@@ -6,7 +6,7 @@ const BASE_URL = import.meta.env.VITE_API_URL || '/api';
 
 const client = axios.create({
     baseURL: BASE_URL,
-    timeout: 60000, // 60 seconds — audio processing can take a while
+    timeout: 300000, // 5 minutes — full song analysis can take a while
 });
 
 /**
