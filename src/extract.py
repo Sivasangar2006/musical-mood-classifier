@@ -26,7 +26,7 @@ MOOD_MAP = {
 }
 
 # ─── Feature Extraction ──────────────────────────────────────────────────────
-def extract_features(file_path: str, duration: int = 120) -> np.ndarray:
+def extract_features(file_path: str, duration: int = 90) -> np.ndarray:
     """
     Load an audio clip and return a 1-D feature vector containing:
       - 13 MFCC means + 13 MFCC stds          = 26
