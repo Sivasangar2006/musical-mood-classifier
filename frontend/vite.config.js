@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // Any request starting with /api gets forwarded to FastAPI
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://localhost:10000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
         // /api/predict → http://localhost:8000/predict
