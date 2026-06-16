@@ -24,6 +24,7 @@ from sklearn.metrics          import (classification_report,
                                        roc_auc_score)
 from sklearn.preprocessing    import label_binarize
 from sklearn.pipeline         import Pipeline
+from sklearn.utils            import compute_sample_weight
 import xgboost as xgb
 
 # ─── Config ──────────────────────────────────────────────────────────────────
@@ -99,6 +100,7 @@ def train_and_evaluate(X_train, X_test, y_train, y_test,
     # ── 1. SVM ──────────────────────────────────────────────────────────────
     print("\n[1/3] Training SVM ...")
     svm_pipe = Pipeline([("svm", SVC(kernel="rbf", probability=True,
+                                      class_weight="balanced",
                                       random_state=RANDOM_SEED))])
     param_grid = {
         "svm__C":     [0.1, 1, 10, 100],
@@ -119,6 +121,7 @@ def train_and_evaluate(X_train, X_test, y_train, y_test,
     # ── 2. Random Forest ────────────────────────────────────────────────────
     print("\n[2/3] Training Random Forest ...")
     rf = RandomForestClassifier(n_estimators=300, max_depth=None,
+                                 class_weight="balanced",
                                  n_jobs=-1, random_state=RANDOM_SEED)
     rf_cv = cross_val_score(rf, X_tr, y_train, cv=cv,
                              scoring="f1_macro", n_jobs=-1)
@@ -143,9 +146,11 @@ def train_and_evaluate(X_train, X_test, y_train, y_test,
         random_state=RANDOM_SEED,
         n_jobs=-1,
     )
+    sample_weights = compute_sample_weight("balanced", y_train)
     xgb_cv = cross_val_score(xgb_model, X_tr, y_train, cv=cv,
                               scoring="f1_macro", n_jobs=-1)
     xgb_model.fit(X_tr, y_train,
+                  sample_weight=sample_weights,
                   eval_set=[(X_te, y_test)],
                   verbose=False)
     xgb_pred = xgb_model.predict(X_te)
