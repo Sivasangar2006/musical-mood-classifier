@@ -133,7 +133,7 @@ export default function DemoSection() {
         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6 md:p-8 flex flex-col">
           <audio ref={audioRef} src={DEMO_SONG_URL} preload="metadata" loop />
 
-          <VinylDisc isPlaying={isPlaying} onToggle={togglePlay} />
+          <VinylDisc isPlaying={isPlaying} onToggle={togglePlay} showLabel={false} />
 
           <h3 className="text-white font-semibold text-lg text-center mb-4">The Life of Ram</h3>
 

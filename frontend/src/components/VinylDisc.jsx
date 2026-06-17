@@ -18,6 +18,7 @@ export default function VinylDisc({
   emoji,
   topText = 'MoodWave',
   bottomText = '',
+  showLabel = true,
 }) {
   const hex = glowColor;
 
@@ -46,14 +47,18 @@ export default function VinylDisc({
             className="w-[88px] h-[88px] rounded-full flex flex-col items-center justify-center"
             style={{ background: labelBg }}
           >
-            {emoji ? (
-              <span className="text-xl leading-none mb-0.5">{emoji}</span>
-            ) : (
-              <span className="text-white text-[9px] font-bold tracking-widest uppercase opacity-80">
-                {topText}
-              </span>
+            {(isPlaying || showLabel) && (
+              emoji ? (
+                <span className="text-xl leading-none mb-0.5">{emoji}</span>
+              ) : (
+                <span className="text-white text-[9px] font-bold tracking-widest uppercase opacity-80">
+                  {topText}
+                </span>
+              )
             )}
-            <span className="text-white/60 text-[7px] tracking-wide mt-0.5">{bottomText}</span>
+            {(isPlaying || showLabel) && (
+              <span className="text-white/60 text-[7px] tracking-wide mt-0.5">{bottomText}</span>
+            )}
             {/* Center hole */}
             <div className="w-2.5 h-2.5 rounded-full bg-gray-950 mt-1" />
           </div>
