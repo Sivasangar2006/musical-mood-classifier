@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Pause, ThumbsUp, ThumbsDown } from 'lucide-react';
 import VinylDisc from './VinylDisc.jsx';
 import SimilarSongs from './SimilarSongs.jsx';
-import LastFmRecommendations from './LastFmRecommendations.jsx';
+import DeezerRecommendations from './DeezerRecommendations.jsx';
 
 const GRADIENTS = {
   Happy:     'from-yellow-400 to-orange-400',
@@ -269,9 +269,9 @@ export default function MoodResult({ result, audioFile, onReset }) {
           </>
         )}
 
-        {/* Last.fm mood-based recommendations */}
+        {/* Deezer mood-based recommendations with search */}
         <div className="border-t border-gray-800 mt-8" />
-        <LastFmRecommendations mood={result.mood} />
+        <DeezerRecommendations mood={result.mood} />
 
         {/* Model badge */}
         {result.model && (

@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import HeroSection from './components/HeroSection';
 import UploadZone from './components/UploadZone';
 import MoodResult from './components/MoodResult';
+import MoodBrowser from './components/MoodBrowser';
 import DemoSection from './components/DemoSection';
 
 export default function App() {
@@ -40,6 +41,12 @@ export default function App() {
         </div>
 
         <div className="max-w-5xl mx-auto px-4 py-8">
+          <div className="border-t border-gray-800" />
+        </div>
+
+        <MoodBrowser />
+
+        <div className="max-w-5xl mx-auto px-4 py-4">
           <div className="border-t border-gray-800" />
         </div>
 

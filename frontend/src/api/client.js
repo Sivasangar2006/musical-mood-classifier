@@ -85,3 +85,28 @@ export const getCapabilities = async () => {
         return { svm: true, cnn: false, faiss: false };
     }
 };
+
+/**
+ * Fetch Deezer track recommendations for a mood.
+ * @param {string} mood - Happy | Energetic | Angry | Sad | Relaxed
+ * @param {number} limit - Number of tracks
+ * @param {number} offset - Pagination offset (multiples of limit rotate query variant)
+ */
+export const getRecommendations = async (mood, limit = 8, offset = 0) => {
+    const response = await client.get(`/recommendations/${mood}`, {
+        params: { limit, offset },
+    });
+    return response.data;
+};
+
+/**
+ * Search Deezer for any song/artist name.
+ * @param {string} mood - Current mood context
+ * @param {string} q - Search query (song name, artist, etc.)
+ */
+export const searchTracks = async (mood, q, limit = 8) => {
+    const response = await client.get(`/recommendations/${mood}/search`, {
+        params: { q, limit },
+    });
+    return response.data;
+};

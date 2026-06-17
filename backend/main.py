@@ -5,10 +5,11 @@ import shutil
 import tempfile
 import joblib
 import numpy as np
+import httpx
 from sqlalchemy import Integer as SAInteger
 from pathlib import Path
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, UploadFile, Depends, HTTPException
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 
@@ -384,7 +385,6 @@ def submit_feedback(
     if not pred:
         raise HTTPException(status_code=404, detail="Prediction not found")
 
-    pred.feedback = correct
     db.add(models.FeedbackLog(
         prediction_id=prediction_id,
         predicted_mood=pred.mood,
@@ -426,3 +426,112 @@ def feedback_stats(db: Session = Depends(get_db)):
             for row in per_mood
         },
     }
+
+
+# ─── iTunes Search API queries per mood ──────────────────────────────────────
+# Rotated to give variety on "More" button clicks
+_ITUNES_QUERIES = {
+    "Happy":     ["happy pop hits", "feel good songs", "upbeat pop", "good vibes playlist"],
+    "Energetic": ["workout hits", "pump up energy", "high energy dance", "adrenaline music"],
+    "Angry":     ["heavy metal", "hard rock aggressive", "metalcore", "nu metal"],
+    "Sad":       ["sad songs heartbreak", "emotional ballad", "melancholy indie", "crying songs"],
+    "Relaxed":   ["chill lofi", "calm piano acoustic", "relaxing ambient", "peaceful instrumental"],
+}
+
+_ITUNES_BASE = "https://itunes.apple.com"
+
+
+def _parse_itunes_track(t: dict) -> dict:
+    return {
+        "id":          t["trackId"],
+        "title":       t["trackName"],
+        "artist":      t["artistName"],
+        "album":       t.get("collectionName", ""),
+        "album_art":   t.get("artworkUrl100", t.get("artworkUrl60", "")),
+        "preview_url": t.get("previewUrl", ""),
+        "store_url":   t.get("trackViewUrl", ""),
+        "duration_ms": t.get("trackTimeMillis", 0),
+        "genre":       t.get("primaryGenreName", ""),
+    }
+
+
+@app.get("/recommendations/{mood}")
+async def get_recommendations(
+    mood: str,
+    limit: int = Query(default=8, ge=1, le=20),
+    offset: int = Query(default=0, ge=0),
+):
+    """
+    Returns iTunes track recommendations for a given mood.
+    Proxied through the backend to avoid any browser CORS issues.
+    Each track includes: title, artist, album_art, preview_url (30s AAC), store_url.
+    """
+    queries = _ITUNES_QUERIES.get(mood)
+    if not queries:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown mood: {mood}. Use one of {list(_ITUNES_QUERIES)}"
+        )
+
+    # Rotate query variant based on page number so "More" gives fresh results
+    page = offset // limit
+    query = queries[page % len(queries)]
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{_ITUNES_BASE}/search",
+                params={
+                    "term":   query,
+                    "media":  "music",
+                    "entity": "song",
+                    "limit":  limit,
+                    "offset": offset % (limit * len(queries)),  # cycle within page window
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"iTunes API error: {e}")
+
+    tracks = [
+        _parse_itunes_track(t)
+        for t in data.get("results", [])
+        if t.get("kind") == "song" and t.get("previewUrl")
+    ]
+
+    return {
+        "mood":   mood,
+        "query":  query,
+        "total":  data.get("resultCount", len(tracks)),
+        "tracks": tracks,
+    }
+
+
+@app.get("/recommendations/{mood}/search")
+async def search_recommendations(
+    mood: str,
+    q: str = Query(..., min_length=1),
+    limit: int = Query(default=8, ge=1, le=20),
+):
+    """
+    Search iTunes for any song or artist name and return results with 30s previews.
+    """
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                f"{_ITUNES_BASE}/search",
+                params={"term": q, "media": "music", "entity": "song", "limit": limit},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"iTunes API error: {e}")
+
+    tracks = [
+        _parse_itunes_track(t)
+        for t in data.get("results", [])
+        if t.get("kind") == "song"
+    ]
+
+    return {"query": q, "mood": mood, "tracks": tracks}
