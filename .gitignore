@@ -2,6 +2,15 @@ data/
 venv/
 .env
 alembic.ini
+
+# CNN model weights — large files, generate with: cd src && python train_cnn.py
+models/cnn_model.pth
+models/cnn_embeddings.npy
+models/cnn_labels.npy
+models/faiss_index.bin
+# Keep these small files in git:
+# models/cnn_filenames.json
+# models/faiss_meta.json
 # Logs
 logs
 *.log

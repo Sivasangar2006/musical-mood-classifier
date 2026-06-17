@@ -2,8 +2,10 @@ import os
 import sys
 import uuid
 import shutil
+import tempfile
 import joblib
 import numpy as np
+from sqlalchemy import Integer as SAInteger
 from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException
@@ -18,6 +20,13 @@ sys.path.append(str(Path(__file__).parent.parent / "src"))
 
 # Now we can import your existing feature extraction code!
 from extract import extract_features
+
+try:
+    import cnn_inference
+    _cnn_module_available = True
+except ImportError:
+    _cnn_module_available = False
+    print("[INFO] torch/faiss not installed — CNN endpoints disabled")
 
 # Import our database setup
 from database import engine, get_db, Base
@@ -68,10 +77,22 @@ try:
     model = joblib.load(MODEL_DIR / "model.pkl")
     scaler = joblib.load(MODEL_DIR / "scaler.pkl")
     encoder = joblib.load(MODEL_DIR / "encoder.pkl")
-    print("[OK] Models loaded successfully")
+    print("[OK] SVM models loaded successfully")
 except Exception as e:
-    print(f"[ERROR] Error loading models: {e}")
+    print(f"[ERROR] Error loading SVM models: {e}")
     raise RuntimeError(f"Could not load ML models: {e}")
+
+# CNN + FAISS — loaded opportunistically; SVM still works if these are absent
+if _cnn_module_available:
+    _cnn_available   = cnn_inference.load_cnn()
+    _faiss_available = cnn_inference.load_faiss()
+    if _cnn_available:
+        print(f"[OK] CNN model loaded  (FAISS: {_faiss_available})")
+    else:
+        print("[INFO] CNN model not found — CNN endpoints will return 503")
+else:
+    _cnn_available   = False
+    _faiss_available = False
 
 # Mood metadata: emoji and description for each mood label
 MOOD_META = {
@@ -135,7 +156,7 @@ async def predict_mood(
     # Step 2: Save to a temporary location
     # We use uuid4() to generate a random unique filename to avoid conflicts
     # if two users upload at the same time
-    temp_filename = f"/tmp/{uuid.uuid4()}_{file.filename}"
+    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{file.filename}")
     
     try:
         # Write the uploaded bytes to disk
@@ -249,17 +270,159 @@ def get_stats(db: Session = Depends(get_db)):
     Useful for a dashboard showing mood distribution.
     """
     from sqlalchemy import func
-    
+
     # Count how many times each mood was predicted
     mood_counts = (
         db.query(models.Prediction.mood, func.count(models.Prediction.id).label("count"))
         .group_by(models.Prediction.mood)
         .all()
     )
-    
+
     total = db.query(models.Prediction).count()
-    
+
     return {
         "total_predictions": total,
         "mood_distribution": {row.mood: row.count for row in mood_counts}
+    }
+
+
+@app.post("/predict/cnn")
+async def predict_mood_cnn(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    CNN-based mood prediction using mel spectrogram + ResNet18.
+    Also returns top-5 similar songs from the FAISS index.
+    """
+    if not _cnn_available:
+        raise HTTPException(
+            status_code=503,
+            detail="CNN model not available — train it first with src/train_cnn.py"
+        )
+
+    allowed_types = ["audio/wav", "audio/mpeg", "audio/mp3", "audio/x-wav"]
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail=f"Invalid file type: {file.content_type}")
+
+    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{file.filename}")
+    try:
+        with open(temp_filename, "wb") as buf:
+            shutil.copyfileobj(file.file, buf)
+
+        result = cnn_inference.predict_cnn(temp_filename)
+        similar = cnn_inference.find_similar(result["embedding"], k=5) if _faiss_available else []
+
+        # Save to DB (reuse same Prediction table)
+        db_prediction = models.Prediction(
+            filename=file.filename,
+            mood=result["mood"],
+            confidence=result["confidence"],
+            prob_happy=result["probabilities"].get("Happy", 0.0),
+            prob_energetic=result["probabilities"].get("Energetic", 0.0),
+            prob_angry=result["probabilities"].get("Angry", 0.0),
+            prob_sad=result["probabilities"].get("Sad", 0.0),
+            prob_relaxed=result["probabilities"].get("Relaxed", 0.0),
+        )
+        db.add(db_prediction)
+        db.commit()
+        db.refresh(db_prediction)
+
+        return {
+            "mood":          result["mood"],
+            "confidence":    result["confidence"],
+            "probabilities": result["probabilities"],
+            "mood_emoji":    result.get("emoji", "🎵"),
+            "mood_description": result.get("description", ""),
+            "model":         "cnn",
+            "similar_songs": similar,
+            "prediction_id": db_prediction.id,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"CNN analysis failed: {str(e)}")
+    finally:
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+
+
+@app.get("/similar/{prediction_id}")
+def get_similar(prediction_id: int, k: int = 5, db: Session = Depends(get_db)):
+    """
+    Given a prediction_id that came from /predict/cnn, re-runs FAISS search
+    using the stored audio (not applicable here) — placeholder for future use.
+    """
+    if not _faiss_available:
+        raise HTTPException(status_code=503, detail="FAISS index not available")
+    return {"message": "Use /predict/cnn which returns similar_songs directly"}
+
+
+@app.get("/capabilities")
+def capabilities():
+    """Returns which models and features are currently available."""
+    return {
+        "svm":   True,
+        "cnn":   _cnn_available,
+        "faiss": _faiss_available,
+    }
+
+
+@app.post("/feedback/{prediction_id}")
+def submit_feedback(
+    prediction_id: int,
+    correct: bool,
+    corrected_mood: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Online feedback loop — user marks whether the prediction was correct.
+    Stores feedback for future model retraining.
+    """
+    pred = db.query(models.Prediction).filter(models.Prediction.id == prediction_id).first()
+    if not pred:
+        raise HTTPException(status_code=404, detail="Prediction not found")
+
+    pred.feedback = correct
+    db.add(models.FeedbackLog(
+        prediction_id=prediction_id,
+        predicted_mood=pred.mood,
+        correct=correct,
+        corrected_mood=corrected_mood,
+    ))
+    db.commit()
+    return {"status": "ok", "prediction_id": prediction_id, "correct": correct}
+
+
+@app.get("/feedback/stats")
+def feedback_stats(db: Session = Depends(get_db)):
+    """Returns model accuracy based on user feedback."""
+    from sqlalchemy import func
+
+    total = db.query(models.FeedbackLog).count()
+    correct = db.query(models.FeedbackLog).filter(models.FeedbackLog.correct == True).count()
+
+    per_mood = (
+        db.query(
+            models.FeedbackLog.predicted_mood,
+            func.count(models.FeedbackLog.id).label("total"),
+            func.sum(
+                models.FeedbackLog.correct.cast(SAInteger)
+            ).label("correct_count"),
+        )
+        .group_by(models.FeedbackLog.predicted_mood)
+        .all()
+    )
+
+    return {
+        "total_feedback":    total,
+        "overall_accuracy":  round(correct / total, 3) if total else None,
+        "per_mood_accuracy": {
+            row.predicted_mood: {
+                "total":    row.total,
+                "accuracy": round(row.correct_count / row.total, 3) if row.total else None,
+            }
+            for row in per_mood
+        },
     }

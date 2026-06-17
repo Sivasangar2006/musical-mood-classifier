@@ -47,7 +47,7 @@ export default function App() {
 
         <footer className="text-center py-10 border-t border-gray-800 mt-10">
           <p className="text-gray-600 text-sm">
-            Built with 🎵 · Powered by ML + Librosa
+            Built with 🎵 · ResNet18 · FAISS · SVM · Librosa
           </p>
         </footer>
       </main>

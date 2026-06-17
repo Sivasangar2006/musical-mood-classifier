@@ -55,3 +55,33 @@ export const getStats = async () => {
     const response = await client.get('/stats');
     return response.data;
 };
+
+/**
+ * CNN-based mood prediction — returns mood + similar_songs from FAISS.
+ */
+export const predictMoodCNN = async (file, onProgress) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await client.post('/predict/cnn', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        onUploadProgress: (e) => {
+            if (onProgress && e.total) {
+                onProgress(Math.round((e.loaded * 100) / e.total));
+            }
+        },
+    });
+    return response.data;
+};
+
+/**
+ * Check which models are currently loaded on the backend.
+ */
+export const getCapabilities = async () => {
+    try {
+        const response = await client.get('/capabilities');
+        return response.data;
+    } catch {
+        return { svm: true, cnn: false, faiss: false };
+    }
+};

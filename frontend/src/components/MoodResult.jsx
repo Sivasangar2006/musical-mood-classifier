@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause } from 'lucide-react';
+import { Pause, ThumbsUp, ThumbsDown } from 'lucide-react';
 import VinylDisc from './VinylDisc.jsx';
+import SimilarSongs from './SimilarSongs.jsx';
+import LastFmRecommendations from './LastFmRecommendations.jsx';
 
 const GRADIENTS = {
   Happy:     'from-yellow-400 to-orange-400',
@@ -42,6 +44,7 @@ export default function MoodResult({ result, audioFile, onReset }) {
   const [currentTime, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [srcUrl, setSrcUrl] = useState(null);
+  const [feedback, setFeedback] = useState(null);  // true | false | null
 
   // Create object URL for the file
   useEffect(() => {
@@ -93,6 +96,16 @@ export default function MoodResult({ result, audioFile, onReset }) {
     if (!audioRef.current) return;
     if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
     else           { audioRef.current.play().catch(() => {}); setIsPlaying(true); }
+  };
+
+  const submitFeedback = async (correct) => {
+    setFeedback(correct);
+    try {
+      const BASE = import.meta.env.VITE_API_URL || '/api';
+      await fetch(`${BASE}/feedback/${result.prediction_id}?correct=${correct}`, {
+        method: 'POST',
+      });
+    } catch { /* silent */ }
   };
 
   const seekTo = (e) => {
@@ -173,6 +186,34 @@ export default function MoodResult({ result, audioFile, onReset }) {
           <p className="text-gray-400 mt-2 text-lg">{result.mood_description}</p>
         </div>
 
+        {/* Feedback */}
+        <div className="flex items-center justify-center gap-3 mb-8">
+          <span className="text-gray-500 text-xs">Was this correct?</span>
+          <button
+            onClick={() => submitFeedback(true)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+              ${feedback === true
+                ? 'bg-emerald-700 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-emerald-400'}`}
+          >
+            <ThumbsUp className="w-3.5 h-3.5" /> Yes
+          </button>
+          <button
+            onClick={() => submitFeedback(false)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors
+              ${feedback === false
+                ? 'bg-red-900 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-red-400'}`}
+          >
+            <ThumbsDown className="w-3.5 h-3.5" /> No
+          </button>
+          {feedback !== null && (
+            <span className="text-gray-600 text-xs">
+              {feedback ? 'Thanks!' : 'Got it, we\'ll learn from this'}
+            </span>
+          )}
+        </div>
+
         {/* Confidence */}
         <div className="mb-8">
           <div className="flex justify-between items-center mb-2">
@@ -219,6 +260,27 @@ export default function MoodResult({ result, audioFile, onReset }) {
             })}
           </div>
         </div>
+
+        {/* FAISS similar songs — only present when CNN endpoint was used */}
+        {result.similar_songs?.length > 0 && (
+          <>
+            <div className="border-t border-gray-800 mt-8" />
+            <SimilarSongs songs={result.similar_songs} />
+          </>
+        )}
+
+        {/* Last.fm mood-based recommendations */}
+        <div className="border-t border-gray-800 mt-8" />
+        <LastFmRecommendations mood={result.mood} />
+
+        {/* Model badge */}
+        {result.model && (
+          <div className="mt-6 flex justify-center">
+            <span className="text-gray-700 text-xs font-mono bg-gray-800/50 px-3 py-1 rounded-full">
+              {result.model === 'cnn' ? '🧠 ResNet18 + FAISS' : '📊 SVM + Librosa'}
+            </span>
+          </div>
+        )}
 
         {/* Reset */}
         <button
