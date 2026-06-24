@@ -5,7 +5,7 @@ alembic==1.13.1
 psycopg2-binary==2.9.9
 python-multipart==0.0.9
 python-dotenv==1.0.1
-pydantic==2.7.1
+pydantic>=2.9,<3
 librosa==0.10.2
 scikit-learn==1.7.2
 xgboost==2.0.3
@@ -21,3 +21,6 @@ torchvision==0.27.0
 faiss-cpu==1.8.0
 matplotlib==3.9.0
 Pillow==10.3.0
+# CLAP valence/arousal engine (the redesign)
+transformers>=4.40,<5
+av==17.1.0

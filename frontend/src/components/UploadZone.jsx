@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { Upload, Music } from 'lucide-react';
 import MusicLoader from './MusicLoader';
+import { analyzeUpload } from '../api/client.js';
 
 export default function UploadZone({ onResult }) {
   const [isDragging, setIsDragging] = useState(false);
@@ -8,7 +9,6 @@ export default function UploadZone({ onResult }) {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [error, setError] = useState(null);
-  const [useCNN, setUseCNN] = useState(false);
 
   const handleFile = useCallback((f) => {
     const ok = ['audio/wav','audio/mpeg','audio/mp3','audio/x-wav'];
@@ -31,18 +31,11 @@ export default function UploadZone({ onResult }) {
     if (!file) return;
     setIsAnalyzing(true); setError(null); setProgress(0);
     try {
-      const { predictMood, predictMoodCNN } = await import('../api/client.js');
-      const result = useCNN
-        ? await predictMoodCNN(file, setProgress)
-        : await predictMood(file, setProgress);
+      const result = await analyzeUpload(file, setProgress);
       onResult(result, file);
     } catch (err) {
       const detail = err.response?.data?.detail ?? '';
-      if (useCNN && err.response?.status === 503) {
-        setError('CNN model not yet trained. Switch to SVM or run src/train_cnn.py first.');
-      } else {
-        setError(detail || 'Analysis failed. Is the backend running?');
-      }
+      setError(detail || 'Analysis failed. Is the backend running?');
     } finally { setIsAnalyzing(false); }
   };
 
@@ -121,28 +114,6 @@ export default function UploadZone({ onResult }) {
         </div>
       )}
 
-      {/* Model toggle */}
-      <div className="mt-4 flex items-center justify-center gap-3">
-        <span className="text-gray-500 text-xs">Model:</span>
-        <div className="flex bg-gray-900 border border-gray-700 rounded-lg p-0.5 text-xs">
-          <button
-            onClick={() => setUseCNN(false)}
-            className={`px-3 py-1.5 rounded-md transition-colors font-medium
-              ${!useCNN ? 'bg-violet-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            SVM
-          </button>
-          <button
-            onClick={() => setUseCNN(true)}
-            className={`px-3 py-1.5 rounded-md transition-colors font-medium flex items-center gap-1.5
-              ${useCNN ? 'bg-violet-600 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          >
-            <span>CNN</span>
-            <span className="opacity-60 text-[10px]">+FAISS</span>
-          </button>
-        </div>
-      </div>
-
       {/* Analyze button */}
       <button
         onClick={handleAnalyze}
@@ -154,7 +125,7 @@ export default function UploadZone({ onResult }) {
             : 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700'}
         `}
       >
-        {useCNN ? '🧠 Analyze with CNN' : '🎵 Analyze Mood'}
+        🎚️ Analyze Mood
       </button>
     </div>
   );

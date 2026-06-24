@@ -1,7 +1,8 @@
 import { useRef, useState, useEffect } from 'react';
 import { Pause, Loader2 } from 'lucide-react';
-import { predictMood } from '../api/client.js';
+import { analyzeUpload } from '../api/client.js';
 import VinylDisc from './VinylDisc.jsx';
+import ValenceArousalPlot from './ValenceArousalPlot.jsx';
 
 const GRADIENTS = {
   Happy: 'from-yellow-400 to-orange-400',
@@ -9,6 +10,10 @@ const GRADIENTS = {
   Angry: 'from-purple-600 to-red-600',
   Sad: 'from-blue-500 to-indigo-500',
   Relaxed: 'from-green-400 to-emerald-400',
+};
+
+const GLOW = {
+  Happy: '#d97706', Energetic: '#ef4444', Angry: '#7c3aed', Sad: '#3b82f6', Relaxed: '#10b981',
 };
 
 const DEMO_SONG_URL = '/demo-song.mp3';
@@ -37,7 +42,7 @@ export default function DemoSection() {
         if (!res.ok) { setHasAudio(false); return; }
         const blob = await res.blob();
         const file = new File([blob], 'demo-song.mp3', { type: 'audio/mpeg' });
-        const result = await predictMood(file, () => {});
+        const result = await analyzeUpload(file, () => {});
         setPrediction(result);
       } catch (err) {
         setPredError('Could not analyze demo song');
@@ -110,9 +115,7 @@ export default function DemoSection() {
   const emoji = prediction?.mood_emoji || '🎵';
   const description = prediction?.mood_description || '';
   const confidence = prediction?.confidence || 0;
-  const probabilities = prediction?.probabilities || {};
   const grad = GRADIENTS[mood] || 'from-violet-500 to-purple-500';
-  const sorted = Object.entries(probabilities).sort(([, a], [, b]) => b - a);
 
   if (!hasAudio) return null;
 
@@ -190,7 +193,7 @@ export default function DemoSection() {
 
               <div className="mb-6">
                 <div className="flex justify-between mb-1.5">
-                  <span className="text-gray-500 text-xs uppercase tracking-wider font-semibold">Confidence</span>
+                  <span className="text-gray-500 text-xs uppercase tracking-wider font-semibold">Consistency</span>
                   <span className="text-white font-bold">{(confidence * 100).toFixed(1)}%</span>
                 </div>
                 <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
@@ -201,30 +204,18 @@ export default function DemoSection() {
                 </div>
               </div>
 
-              <p className="text-gray-600 text-xs uppercase tracking-widest font-semibold mb-3">Breakdown</p>
-              <div className="space-y-3">
-                {sorted.map(([m, prob]) => {
-                  const isPrimary = m === mood;
-                  return (
-                    <div key={m}>
-                      <div className="flex justify-between text-sm mb-1">
-                        <span className={isPrimary ? 'text-white font-medium' : 'text-gray-500'}>{m}</span>
-                        <span className={isPrimary ? 'text-white' : 'text-gray-600 font-mono text-xs'}>
-                          {(prob * 100).toFixed(1)}%
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all duration-[2s] ease-out ${
-                            isPrimary ? `bg-gradient-to-r ${GRADIENTS[m]}` : 'bg-gray-700'
-                          }`}
-                          style={{ width: visible ? `${prob * 100}%` : '0%' }}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              {typeof prediction.valence === 'number' && (
+                <>
+                  <p className="text-gray-600 text-xs uppercase tracking-widest font-semibold mb-3">Emotion space</p>
+                  <ValenceArousalPlot
+                    valence={prediction.valence}
+                    arousal={prediction.arousal}
+                    mood={mood}
+                    color={GLOW[mood] || '#7c3aed'}
+                    similar={prediction.similar}
+                  />
+                </>
+              )}
             </>
           ) : (
             <div className="text-center py-10 text-gray-600 text-sm">

@@ -1,5 +1,6 @@
 import os
 import sys
+import json
 import uuid
 import shutil
 import tempfile
@@ -32,7 +33,27 @@ except ImportError:
 # Import our database setup
 from database import engine, get_db, Base
 import models  # This import triggers SQLAlchemy to register the models
-from schemas import PredictResponse, HistoryResponse, PredictionRecord
+from schemas import (
+    PredictResponse, HistoryResponse, PredictionRecord,
+    AnalyzeResponse, AnalyzeTrackRequest, MoodFeedbackRequest,
+)
+
+# CLAP valence/arousal engine (the redesign). Loaded opportunistically — if torch/
+# transformers or the trained head are missing, the legacy SVM path still works.
+try:
+    from emotion.predict_va import analyze_audio as _va_analyze
+    _va_available = True
+except Exception as e:  # noqa: BLE001 — any import/load failure should just disable it
+    _va_available = False
+    print(f"[INFO] CLAP V/A engine disabled: {e}")
+
+# Recommendation engine over the precomputed iTunes corpus (in-memory cosine search).
+try:
+    from emotion.recommend import recommend_similar, recommend_by_mood, recommend_by_text, CORPUS_NPZ
+    _rec_available = CORPUS_NPZ.is_file()
+except Exception as e:  # noqa: BLE001
+    _rec_available = False
+    print(f"[INFO] Recommendation engine disabled: {e}")
 
 load_dotenv()
 
@@ -364,10 +385,243 @@ def get_similar(prediction_id: int, k: int = 5, db: Session = Depends(get_db)):
 def capabilities():
     """Returns which models and features are currently available."""
     return {
-        "svm":   True,
-        "cnn":   _cnn_available,
-        "faiss": _faiss_available,
+        "svm":     True,
+        "cnn":     _cnn_available,
+        "faiss":   _faiss_available,
+        "clap_va": _va_available,
+        "corpus":  _rec_available,
     }
+
+
+# ─────────────────────────────────────────────
+# Dimensional-emotion (CLAP valence/arousal) endpoints
+# ─────────────────────────────────────────────
+
+def _persist_analysis(db: Session, result: dict, source_type: str,
+                      title: str | None = None, artist: str | None = None) -> int | None:
+    """Save the analysis (with its embedding) so it can later be confirmed/corrected
+    and become a training example. Returns the new row id, or None if the DB write
+    fails (analysis still succeeds — persistence is best-effort)."""
+    try:
+        rec = models.MoodAnalysis(
+            source_type=source_type, title=title, artist=artist,
+            valence=result["valence"], arousal=result["arousal"],
+            mood=result["mood"], quadrant=result["quadrant"],
+            confidence=result["confidence"], aggression=result.get("aggression", 0.0),
+            embedding=json.dumps(result["embedding"]),
+        )
+        db.add(rec)
+        db.commit()
+        db.refresh(rec)
+        return rec.id
+    except Exception as e:  # noqa: BLE001
+        db.rollback()
+        print(f"[WARN] could not persist analysis: {e}")
+        return None
+
+
+def _va_to_response(
+    result: dict,
+    title: str | None = None,
+    artist: str | None = None,
+    exclude_id: int | None = None,
+    analysis_id: int | None = None,
+) -> AnalyzeResponse:
+    """Wrap analyze_audio() output in the API schema, attaching mood emoji/desc
+    and recognizable 'similar songs' from the corpus (if the corpus is loaded)."""
+    meta = MOOD_META.get(result["mood"], {"emoji": "🎵", "description": ""})
+    similar = []
+    if _rec_available:
+        try:
+            similar = recommend_similar(result["embedding"], k=8, exclude_id=exclude_id)
+        except Exception as e:  # noqa: BLE001 — recs are a bonus, never fail the analysis
+            print(f"[WARN] similar-song lookup failed: {e}")
+    return AnalyzeResponse(
+        valence=result["valence"],
+        arousal=result["arousal"],
+        valence_raw=result["valence_raw"],
+        arousal_raw=result["arousal_raw"],
+        mood=result["mood"],
+        quadrant=result["quadrant"],
+        confidence=result["confidence"],
+        n_segments=result["n_segments"],
+        mood_emoji=meta["emoji"],
+        mood_description=meta["description"],
+        title=title,
+        artist=artist,
+        similar=similar,
+        analysis_id=analysis_id,
+    )
+
+
+@app.post("/analyze/upload", response_model=AnalyzeResponse)
+async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    """Analyse an uploaded audio file's emotion with the CLAP valence/arousal engine."""
+    if not _va_available:
+        raise HTTPException(status_code=503, detail="CLAP V/A engine not available")
+
+    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{file.filename}")
+    try:
+        with open(temp_filename, "wb") as buf:
+            shutil.copyfileobj(file.file, buf)
+        result = _va_analyze(temp_filename)
+        analysis_id = _persist_analysis(db, result, "upload", title=file.filename)
+        return _va_to_response(result, title=file.filename, analysis_id=analysis_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+    finally:
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+
+
+@app.post("/analyze/track", response_model=AnalyzeResponse)
+async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db)):
+    """Analyse an iTunes track by its 30 s preview URL (the core product flow).
+
+    Downloads the preview server-side, runs CLAP + the valence/arousal head, and
+    returns the emotion reading with the track metadata echoed back.
+    """
+    if not _va_available:
+        raise HTTPException(status_code=503, detail="CLAP V/A engine not available")
+    if not req.preview_url:
+        raise HTTPException(status_code=400, detail="preview_url is required")
+
+    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_preview.m4a")
+    try:
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+            resp = await client.get(req.preview_url)
+            resp.raise_for_status()
+            with open(temp_filename, "wb") as buf:
+                buf.write(resp.content)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Could not fetch preview: {e}")
+
+    try:
+        result = _va_analyze(temp_filename)
+        analysis_id = _persist_analysis(db, result, "track", title=req.title, artist=req.artist)
+        return _va_to_response(result, title=req.title, artist=req.artist, analysis_id=analysis_id)
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
+    finally:
+        if os.path.exists(temp_filename):
+            os.remove(temp_filename)
+
+
+@app.get("/va/recommend/{mood}")
+def va_recommend_mood(mood: str, k: int = Query(default=15, ge=1, le=50)):
+    """Model-based mood recommendations: corpus tracks nearest the mood's point in
+    valence/arousal space. Unlike /recommendations/{mood} (live iTunes keyword
+    search), these come from songs the model itself placed near that mood."""
+    if not _rec_available:
+        raise HTTPException(status_code=503, detail="Recommendation corpus not available")
+    try:
+        tracks = recommend_by_mood(mood, k=k)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    return {"mood": mood, "source": "clap-corpus", "count": len(tracks), "tracks": tracks}
+
+
+@app.get("/va/search")
+def va_search_text(q: str = Query(..., min_length=2), k: int = Query(default=12, ge=1, le=50)):
+    """Cross-modal text-to-mood search: describe a vibe ('rainy sunday drive') and
+    get songs that sound like it, via CLAP's shared audio/text embedding space."""
+    if not _rec_available:
+        raise HTTPException(status_code=503, detail="Recommendation corpus not available")
+    tracks = recommend_by_text(q, k=k)
+    return {"query": q, "source": "clap-text", "count": len(tracks), "tracks": tracks}
+
+
+# ─────────────────────────────────────────────
+# Human-in-the-loop feedback (replaces passive History)
+# ─────────────────────────────────────────────
+
+@app.post("/va/feedback/{analysis_id}")
+def va_feedback(analysis_id: int, req: MoodFeedbackRequest, db: Session = Depends(get_db)):
+    """Record a user's verdict on an analysis. A confirmation turns the predicted
+    point into a label; a correction supplies the true mood / valence-arousal. Both
+    accumulate as training examples for the continual-learning retrain."""
+    analysis = db.query(models.MoodAnalysis).filter(models.MoodAnalysis.id == analysis_id).first()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Analysis not found")
+
+    cv, ca = req.corrected_valence, req.corrected_arousal
+    # If the user named a corrected mood but didn't drag the point, use the mood's
+    # circumplex anchor as the target coordinates.
+    if not req.correct and req.corrected_mood and cv is None:
+        try:
+            from emotion.predict_va import MOOD_ANCHORS
+            if req.corrected_mood in MOOD_ANCHORS:
+                cv, ca = MOOD_ANCHORS[req.corrected_mood]
+        except Exception:  # noqa: BLE001
+            pass
+
+    db.add(models.MoodFeedback(
+        analysis_id=analysis_id,
+        correct=req.correct,
+        corrected_mood=req.corrected_mood,
+        corrected_valence=cv,
+        corrected_arousal=ca,
+    ))
+    db.commit()
+    return {"status": "ok", "analysis_id": analysis_id, "correct": req.correct}
+
+
+@app.get("/va/history")
+def va_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
+    """Recent analyses with their feedback status — the active replacement for the
+    old passive history list."""
+    rows = (
+        db.query(models.MoodAnalysis)
+        .order_by(models.MoodAnalysis.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    fb = {f.analysis_id: f for f in db.query(models.MoodFeedback).all()}
+    items = []
+    for r in rows:
+        f = fb.get(r.id)
+        items.append({
+            "id": r.id, "title": r.title, "artist": r.artist,
+            "mood": r.mood, "quadrant": r.quadrant,
+            "valence": r.valence, "arousal": r.arousal,
+            "confidence": r.confidence,
+            "feedback": None if not f else {
+                "correct": f.correct, "corrected_mood": f.corrected_mood,
+            },
+        })
+    return {"total": db.query(models.MoodAnalysis).count(), "analyses": items}
+
+
+@app.get("/va/feedback/stats")
+def va_feedback_stats(db: Session = Depends(get_db)):
+    """Dashboard numbers: how much the model is learning from users."""
+    from sqlalchemy import func as sqlfunc
+
+    total_analyses = db.query(models.MoodAnalysis).count()
+    total_feedback = db.query(models.MoodFeedback).count()
+    correct = db.query(models.MoodFeedback).filter(models.MoodFeedback.correct == True).count()  # noqa: E712
+    corrections = total_feedback - correct
+    return {
+        "total_analyses": total_analyses,
+        "total_feedback": total_feedback,
+        "confirmed_correct": correct,
+        "corrections": corrections,
+        # every feedback row is a usable training example (confirm = own label, correct = new label)
+        "labeled_examples_for_retrain": total_feedback,
+        "accuracy": round(correct / total_feedback, 3) if total_feedback else None,
+    }
+
+
+_METRICS_PATH = Path(__file__).parent.parent / "artifacts" / "eval" / "metrics.json"
+
+
+@app.get("/va/metrics")
+def va_metrics():
+    """Model evaluation metrics (R2/MAE/calibration/quadrant confusion) for the
+    'About the model' dashboard. Generated offline by src/emotion/evaluate.py."""
+    if not _METRICS_PATH.is_file():
+        raise HTTPException(status_code=404, detail="Metrics not generated yet")
+    return json.loads(_METRICS_PATH.read_text(encoding="utf-8"))
 
 
 @app.post("/feedback/{prediction_id}")

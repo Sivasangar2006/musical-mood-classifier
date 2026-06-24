@@ -1,7 +1,31 @@
 data/
 venv/
+.venv/
 .env
 alembic.ini
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# graphify knowledge-graph output (regenerate with /graphify)
+graphify-out/
+
+# Precomputed embeddings / training data — regenerate via src/emotion/build_embeddings.py.
+# Ignore everything in artifacts/ EXCEPT the small runtime files the backend serves:
+#   va_head.joblib (the model), itunes_corpus.npz + itunes_meta.json (the rec corpus).
+artifacts/*
+!artifacts/deam/
+artifacts/deam/*
+!artifacts/deam/va_head.joblib
+!artifacts/deam/va_calib.json
+!artifacts/corpus/
+artifacts/corpus/*
+!artifacts/corpus/itunes_corpus.npz
+!artifacts/corpus/itunes_meta.json
+!artifacts/eval/
+artifacts/eval/*
+!artifacts/eval/metrics.json
 
 # CNN model weights — large files, generate with: cd src && python train_cnn.py
 models/cnn_model.pth

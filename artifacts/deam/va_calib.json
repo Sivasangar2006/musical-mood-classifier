@@ -1,0 +1,30 @@
+{
+  "agg_lo": 0.43015784025192266,
+  "agg_hi": 0.530293778181076,
+  "a_v": 0.32121503353118896,
+  "b_v": -0.039239779114723206,
+  "a_a": 1.1519659757614136,
+  "b_a": -0.1957668960094452,
+  "prompts": {
+    "pos": [
+      "happy joyful cheerful uplifting music",
+      "positive feel-good bright song"
+    ],
+    "neg": [
+      "angry aggressive harsh menacing music",
+      "sad depressing gloomy song"
+    ],
+    "hi": [
+      "intense energetic fast loud powerful music",
+      "aggressive driving high-energy song"
+    ],
+    "lo": [
+      "calm peaceful gentle quiet music",
+      "slow soft relaxing tender song"
+    ],
+    "agg": [
+      "aggressive angry harsh screaming music",
+      "heavy metal hardcore aggressive"
+    ]
+  }
+}
