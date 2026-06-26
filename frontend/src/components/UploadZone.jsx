@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
-import { Upload, Music } from 'lucide-react';
-import MusicLoader from './MusicLoader';
+import { motion } from 'framer-motion';
+import { Upload, Music, FileAudio } from 'lucide-react';
+import MusicLoader from './MusicLoader.jsx';
 import { analyzeUpload } from '../api/client.js';
 
 export default function UploadZone({ onResult }) {
@@ -11,9 +12,9 @@ export default function UploadZone({ onResult }) {
   const [error, setError] = useState(null);
 
   const handleFile = useCallback((f) => {
-    const ok = ['audio/wav','audio/mpeg','audio/mp3','audio/x-wav'];
-    if (!ok.includes(f.type)) { setError('Please upload a .wav or .mp3 file'); return; }
-    if (f.size > 50*1024*1024) { setError('File too large. Max 50 MB.'); return; }
+    const ok = ['audio/wav', 'audio/mpeg', 'audio/mp3', 'audio/x-wav'];
+    if (!ok.includes(f.type)) { setError('Please choose a .wav or .mp3 file.'); return; }
+    if (f.size > 50 * 1024 * 1024) { setError('That file is over 50 MB.'); return; }
     setError(null);
     setFile(f);
   }, []);
@@ -21,10 +22,6 @@ export default function UploadZone({ onResult }) {
   const handleDrop = (e) => {
     e.preventDefault(); setIsDragging(false);
     if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
-  };
-
-  const handleInputChange = (e) => {
-    if (e.target.files[0]) handleFile(e.target.files[0]);
   };
 
   const handleAnalyze = async () => {
@@ -35,18 +32,19 @@ export default function UploadZone({ onResult }) {
       onResult(result, file);
     } catch (err) {
       const detail = err.response?.data?.detail ?? '';
-      setError(detail || 'Analysis failed. Is the backend running?');
+      setError(detail || 'Could not analyse that file. Please try again.');
     } finally { setIsAnalyzing(false); }
   };
 
   if (isAnalyzing) {
     return (
-      <div className="card p-10 max-w-xl mx-auto animate-scale-in">
-        <MusicLoader text={progress < 100 ? `Uploading… ${progress}%` : 'Analyzing mood…'} />
-        <div className="mt-4 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-full transition-all duration-300"
-            style={{ width: `${progress}%` }}
+      <div className="card p-10 max-w-xl mx-auto">
+        <MusicLoader text={progress < 100 ? `Uploading… ${progress}%` : 'Reading the mood…'} />
+        <div className="mt-2 h-1.5 bg-line rounded-full overflow-hidden">
+          <motion.div
+            className="h-full bg-clay rounded-full"
+            animate={{ width: `${progress}%` }}
+            transition={{ duration: 0.3 }}
           />
         </div>
       </div>
@@ -54,78 +52,58 @@ export default function UploadZone({ onResult }) {
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto animate-fade-in-up">
-      {/* Drop zone */}
+    <div className="w-full max-w-xl mx-auto">
       <div
         onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        className={`
-          relative p-10 text-center transition-all duration-200 cursor-pointer rounded-2xl
-          border-2 border-dashed
+        className={`relative px-6 py-10 text-center rounded-xl2 border border-dashed transition-colors cursor-pointer
           ${isDragging
-            ? 'border-violet-500 bg-violet-500/10'
-            : 'border-gray-700 bg-gray-900 hover:border-gray-600 hover:bg-gray-800/80'}
-        `}
+            ? 'border-clay bg-clay-wash'
+            : 'border-line-strong bg-card hover:border-ink-faint'}`}
       >
         <input
           type="file" accept=".wav,.mp3,audio/*"
-          onChange={handleInputChange}
+          onChange={(e) => e.target.files[0] && handleFile(e.target.files[0])}
           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
         />
-        <div className="flex flex-col items-center gap-4 pointer-events-none">
+        <div className="flex flex-col items-center gap-3 pointer-events-none">
           {file ? (
             <>
-              <div className="w-16 h-16 rounded-2xl bg-violet-900/50 border border-violet-700 flex items-center justify-center">
-                <Music className="w-8 h-8 text-violet-400" />
-              </div>
+              <span className="w-12 h-12 rounded-lg bg-clay-wash flex items-center justify-center">
+                <FileAudio className="w-6 h-6 text-clay" strokeWidth={2} />
+              </span>
               <div>
-                <p className="text-white font-semibold text-lg">{file.name}</p>
-                <p className="text-gray-500 text-sm">{(file.size/1024/1024).toFixed(2)} MB</p>
+                <p className="text-ink font-semibold">{file.name}</p>
+                <p className="text-ink-soft text-sm">{(file.size / 1024 / 1024).toFixed(1)} MB · ready</p>
               </div>
             </>
           ) : (
             <>
-              <div className="w-16 h-16 rounded-2xl bg-gray-800 border border-gray-700 flex items-center justify-center">
-                <Upload className="w-8 h-8 text-gray-500" />
-              </div>
+              <span className="w-12 h-12 rounded-lg bg-paper border border-line flex items-center justify-center">
+                <Upload className="w-6 h-6 text-ink-soft" strokeWidth={2} />
+              </span>
               <div>
-                <p className="text-white font-medium text-lg">Drop your audio file here</p>
-                <p className="text-gray-500 text-sm mt-1">or click to browse</p>
-                <p className="text-gray-600 text-xs mt-3 font-mono">.wav  ·  .mp3  ·  max 50MB</p>
+                <p className="text-ink font-medium">Drop an audio file</p>
+                <p className="text-ink-soft text-sm mt-0.5">or click to browse · wav, mp3 · up to 50 MB</p>
               </div>
             </>
           )}
         </div>
       </div>
 
-      {/* Mobile browse button */}
-      <label className="mt-3 flex items-center justify-center gap-2 w-full py-3 rounded-xl
-                        bg-gray-900 border border-gray-800 cursor-pointer hover:bg-gray-800 transition-colors md:hidden">
-        <span>📁</span>
-        <span className="text-gray-300 text-sm font-medium">Browse Files</span>
-        <input type="file" accept=".wav,.mp3,audio/*" onChange={handleInputChange} className="hidden" />
-      </label>
+      {error && <p className="text-energetic text-sm text-center mt-3">{error}</p>}
 
-      {/* Error */}
-      {error && (
-        <div className="mt-3 p-3 bg-red-900/40 border border-red-800 rounded-xl animate-scale-in">
-          <p className="text-red-400 text-sm text-center">{error}</p>
-        </div>
-      )}
-
-      {/* Analyze button */}
       <button
         onClick={handleAnalyze}
         disabled={!file}
-        className={`
-          mt-4 w-full py-4 rounded-xl font-bold text-lg transition-all duration-200
+        className={`mt-3 w-full h-12 rounded-xl2 font-semibold transition-colors flex items-center justify-center gap-2
           ${file
-            ? 'bg-violet-600 hover:bg-violet-500 text-white shadow-lg'
-            : 'bg-gray-800 text-gray-600 cursor-not-allowed border border-gray-700'}
-        `}
+            ? 'bg-clay hover:bg-clay-dark text-white cursor-pointer'
+            : 'bg-line text-ink-faint cursor-not-allowed'}`}
       >
-        🎚️ Analyze Mood
+        <Music className="w-4 h-4" strokeWidth={2.25} />
+        Read its mood
       </button>
     </div>
   );

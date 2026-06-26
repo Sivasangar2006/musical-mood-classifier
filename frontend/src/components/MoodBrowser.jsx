@@ -1,20 +1,22 @@
 /**
- * MoodBrowser
- * "What's your mood today?" — pick a mood, get songs the MODEL placed nearest
- * that mood in valence/arousal space (not a keyword search). No upload needed.
+ * MoodBrowser — pick a mood, get songs the model placed nearest it in emotion
+ * space (not a keyword search). No upload needed.
  */
 
 import { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { getVARecommendations } from '../api/client.js';
+import { revealUp } from '../lib/motion.js';
 import CorpusTracks from './CorpusTracks.jsx';
+import SectionHeading from './SectionHeading.jsx';
 
 const MOODS = [
-  { name: 'Happy',     emoji: '😊', grad: 'from-yellow-500 to-orange-400', glow: '#d97706' },
-  { name: 'Energetic', emoji: '⚡', grad: 'from-red-500 to-pink-500',      glow: '#ef4444' },
-  { name: 'Angry',     emoji: '😠', grad: 'from-purple-600 to-red-600',    glow: '#7c3aed' },
-  { name: 'Sad',       emoji: '😢', grad: 'from-blue-500 to-indigo-500',   glow: '#3b82f6' },
-  { name: 'Relaxed',   emoji: '😌', grad: 'from-emerald-500 to-teal-500',  glow: '#10b981' },
+  { name: 'Happy',     color: '#C98A12' },
+  { name: 'Energetic', color: '#D6294B' },
+  { name: 'Angry',     color: '#7E3CC0' },
+  { name: 'Sad',       color: '#2563EB' },
+  { name: 'Relaxed',   color: '#0E8C63' },
 ];
 
 export default function MoodBrowser() {
@@ -29,57 +31,63 @@ export default function MoodBrowser() {
     setLoading(true); setError(null);
     getVARecommendations(selected.name, 12)
       .then((d) => { if (active) setTracks(d.tracks); })
-      .catch(() => { if (active) setError('Could not load recommendations. Is the backend running?'); })
+      .catch(() => { if (active) setError('Could not load recommendations. Please try again.'); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [selected]);
 
   return (
-    <section className="max-w-2xl mx-auto px-4 py-12">
-      <div className="text-center mb-8">
-        <h2 className="text-2xl md:text-3xl font-display font-bold text-white">
-          What's your mood today?
-        </h2>
-        <p className="text-gray-500 text-sm mt-2">
-          Pick a mood — songs the model placed nearest it in emotion space
-        </p>
+    <motion.section
+      variants={revealUp} initial="hidden" whileInView="show" viewport={{ once: true, margin: '-80px' }}
+      className="max-w-2xl mx-auto px-4 sm:px-6 py-14"
+    >
+      <SectionHeading index="02" title="Browse by mood" subtitle="Pick a feeling and hear what fits." />
+
+      <div className="flex flex-wrap gap-2 mb-6">
+        {MOODS.map((m) => {
+          const on = selected?.name === m.name;
+          return (
+            <motion.button
+              key={m.name}
+              onClick={() => setSelected(on ? null : m)}
+              whileTap={{ scale: 0.96 }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full font-medium text-sm border transition-colors cursor-pointer
+                          ${on ? '' : 'bg-card border-line text-ink hover:border-line-strong'}`}
+              style={on ? { background: m.color, borderColor: m.color, color: '#fff' } : undefined}
+            >
+              {!on && <span className="w-2 h-2 rounded-full" style={{ background: m.color }} />}
+              {m.name}
+            </motion.button>
+          );
+        })}
       </div>
 
-      <div className="flex flex-wrap justify-center gap-3 mb-8">
-        {MOODS.map((m) => (
-          <button
-            key={m.name}
-            onClick={() => setSelected(selected?.name === m.name ? null : m)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-full font-medium text-sm transition-all duration-200 border-2
-              ${selected?.name === m.name
-                ? `bg-gradient-to-r ${m.grad} text-white border-transparent shadow-lg scale-105`
-                : 'bg-gray-900 text-gray-300 border-gray-700 hover:border-gray-500 hover:text-white'}`}
+      <AnimatePresence mode="wait">
+        {selected && (
+          <motion.div
+            key={selected.name}
+            initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="card p-5"
           >
-            <span className="text-base">{m.emoji}</span>
-            {m.name}
-          </button>
-        ))}
-      </div>
-
-      {selected && (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-          {loading ? (
-            <div className="flex items-center gap-2 text-gray-500 text-sm py-6 justify-center">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Finding {selected.name.toLowerCase()} tracks…</span>
-            </div>
-          ) : error ? (
-            <p className="text-red-400 text-sm text-center py-4">{error}</p>
-          ) : (
-            <CorpusTracks
-              tracks={tracks}
-              heading={`${selected.name} songs`}
-              subheading="Nearest the mood in valence/arousal space · 30s previews"
-              accent={selected.glow}
-            />
-          )}
-        </div>
-      )}
-    </section>
+            {loading ? (
+              <div className="flex items-center gap-2 text-ink-soft text-sm py-6 justify-center">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Finding {selected.name.toLowerCase()} songs…</span>
+              </div>
+            ) : error ? (
+              <p className="text-energetic text-sm text-center py-4">{error}</p>
+            ) : (
+              <CorpusTracks
+                tracks={tracks}
+                heading={`${selected.name} songs`}
+                subheading="Closest to this mood in emotion space · 30-second previews"
+                accent={selected.color}
+              />
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </motion.section>
   );
 }

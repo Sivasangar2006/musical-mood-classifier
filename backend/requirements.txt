@@ -24,3 +24,6 @@ Pillow==10.3.0
 # CLAP valence/arousal engine (the redesign)
 transformers>=4.40,<5
 av==17.1.0
+# Google OAuth sign-in
+google-auth>=2.30,<3
+PyJWT>=2.8,<3

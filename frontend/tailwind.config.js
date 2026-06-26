@@ -1,48 +1,42 @@
 /** @type {import('tailwindcss').Config} */
+const ch = (v) => `rgb(var(${v}) / <alpha-value>)`;
+
 export default {
-  content: ["./index.html","./src/**/*.{js,ts,jsx,tsx}"],
+  darkMode: 'class',
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Inter','system-ui','sans-serif'],
-        display: ['Space Grotesk','Inter','system-ui','sans-serif'],
+        sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['"Space Grotesk"', 'Inter', 'system-ui', 'sans-serif'],
       },
       colors: {
-        happy:     { DEFAULT:'#F59E0B', light:'#FEF3C7' },
-        energetic: { DEFAULT:'#EF4444', light:'#FEE2E2' },
-        angry:     { DEFAULT:'#7C3AED', light:'#EDE9FE' },
-        sad:       { DEFAULT:'#3B82F6', light:'#DBEAFE' },
-        relaxed:   { DEFAULT:'#10B981', light:'#D1FAE5' },
+        // Semantic tokens — driven by CSS variables so light/dark share one set
+        // of components. (Channel triplets keep `/opacity` modifiers working.)
+        paper:        ch('--paper'),
+        card:         ch('--card'),
+        ink:          ch('--ink'),
+        'ink-soft':   ch('--ink-soft'),
+        'ink-faint':  ch('--ink-faint'),
+        line:         ch('--line'),
+        'line-strong':ch('--line-strong'),
+        clay:         ch('--clay'),
+        'clay-dark':  ch('--clay-dark'),
+        'clay-wash':  ch('--clay-wash'),
+        // Mood colours — data accents, constant across themes.
+        happy:     '#C98A12',
+        energetic: '#D6294B',
+        angry:     '#7E3CC0',
+        sad:       '#2563EB',
+        relaxed:   '#0E8C63',
       },
-      animation: {
-        'float-1':'floatA 7s ease-in-out infinite',
-        'float-2':'floatB 9s ease-in-out infinite',
-        'float-3':'floatC 11s ease-in-out infinite',
-        'pulse-glow':'pulseGlow 3s ease-in-out infinite',
-        'gradient':'gradientShift 6s ease infinite',
-        'fade-in-up':'fadeInUp 0.7s ease-out forwards',
-        'scale-in':'scaleIn 0.5s ease-out forwards',
-        'note-1':'bounceNote 0.8s ease-in-out infinite',
-        'note-2':'bounceNote 0.8s ease-in-out 0.15s infinite',
-        'note-3':'bounceNote 0.8s ease-in-out 0.3s infinite',
-        'note-4':'bounceNote 0.8s ease-in-out 0.45s infinite',
-        'eq-1':'eqBar 1.2s ease-in-out infinite',
-        'eq-2':'eqBar 1.2s ease-in-out 0.1s infinite',
-        'eq-3':'eqBar 1.2s ease-in-out 0.2s infinite',
-        'eq-4':'eqBar 1.2s ease-in-out 0.3s infinite',
-        'eq-5':'eqBar 1.2s ease-in-out 0.4s infinite',
-        'spin-slow':'spin 8s linear infinite',
+      boxShadow: {
+        card: '0 1px 2px rgb(0 0 0 / 0.04), 0 1px 3px rgb(0 0 0 / 0.06)',
+        lift: '0 4px 6px rgb(0 0 0 / 0.05), 0 10px 20px rgb(0 0 0 / 0.07)',
+        pop:  '0 8px 16px rgb(0 0 0 / 0.10), 0 20px 40px rgb(0 0 0 / 0.16)',
       },
-      keyframes: {
-        floatA:{ '0%,100%':{transform:'translateY(0) rotate(0)'},'50%':{transform:'translateY(-18px) rotate(3deg)'}},
-        floatB:{ '0%,100%':{transform:'translateY(0)'},'50%':{transform:'translateY(-25px) rotate(-5deg)'}},
-        floatC:{ '0%,100%':{transform:'translateY(0) translateX(0)'},'50%':{transform:'translateY(-15px) translateX(10px)'}},
-        pulseGlow:{ '0%,100%':{boxShadow:'0 0 20px rgba(139,92,246,0.15)'},'50%':{boxShadow:'0 0 50px rgba(139,92,246,0.3)'}},
-        gradientShift:{ '0%':{backgroundPosition:'0% 50%'},'50%':{backgroundPosition:'100% 50%'},'100%':{backgroundPosition:'0% 50%'}},
-        fadeInUp:{ from:{opacity:'0',transform:'translateY(30px)'},to:{opacity:'1',transform:'translateY(0)'}},
-        scaleIn:{ from:{opacity:'0',transform:'scale(0.92)'},to:{opacity:'1',transform:'scale(1)'}},
-        bounceNote:{ '0%,100%':{transform:'translateY(0) scale(1)',opacity:'0.7'},'50%':{transform:'translateY(-18px) scale(1.15)',opacity:'1'}},
-        eqBar:{ '0%,100%':{height:'15%'},'25%':{height:'70%'},'50%':{height:'95%'},'75%':{height:'45%'}},
+      borderRadius: {
+        xl2: '14px',
       },
     },
   },

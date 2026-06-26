@@ -84,6 +84,22 @@ class AnalyzeTrackRequest(BaseModel):
     artist: Optional[str] = None
 
 
+class GoogleAuthRequest(BaseModel):
+    """Body for POST /auth/google — the Google ID token from the sign-in button."""
+    credential: str
+
+
+class UserOut(BaseModel):
+    """Public user profile returned after login / from /auth/me."""
+    id: int
+    email: Optional[str] = None
+    name: Optional[str] = None
+    picture: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MoodFeedbackRequest(BaseModel):
     """Body for POST /va/feedback/{analysis_id}.
     correct=True confirms the prediction; otherwise supply corrected_mood and/or an

@@ -1,47 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import { Pause, ThumbsUp, Check } from 'lucide-react';
-import VinylDisc from './VinylDisc.jsx';
+import { motion } from 'framer-motion';
+import { Play, Pause, ThumbsUp, Check, ArrowLeft } from 'lucide-react';
 import ValenceArousalPlot from './ValenceArousalPlot.jsx';
 import CorpusTracks from './CorpusTracks.jsx';
 import { submitVAFeedback } from '../api/client.js';
+import { cardIn, ease } from '../lib/motion.js';
 
 const MOODS = ['Happy', 'Energetic', 'Angry', 'Sad', 'Relaxed'];
 
-const GRADIENTS = {
-  Happy:     'from-yellow-400 to-orange-400',
-  Energetic: 'from-red-500 to-pink-500',
-  Angry:     'from-purple-600 to-red-600',
-  Sad:       'from-blue-500 to-indigo-500',
-  Relaxed:   'from-green-400 to-emerald-400',
-};
-
-const LABEL_BG = {
-  Happy:     'radial-gradient(circle, #d97706, #92400e)',
-  Energetic: 'radial-gradient(circle, #dc2626, #9f1239)',
-  Angry:     'radial-gradient(circle, #7c3aed, #6b21a8)',
-  Sad:       'radial-gradient(circle, #2563eb, #1e3a8a)',
-  Relaxed:   'radial-gradient(circle, #059669, #065f46)',
-};
-
-const GLOW_COLOR = {
-  Happy:     '#d97706',
-  Energetic: '#ef4444',
-  Angry:     '#7c3aed',
-  Sad:       '#3b82f6',
-  Relaxed:   '#10b981',
+// Mood colours, tuned for contrast on a light surface. Used only as data accents.
+const MOOD_COLOR = {
+  Happy: '#C98A12', Energetic: '#D6294B', Angry: '#7E3CC0', Sad: '#2563EB', Relaxed: '#0E8C63',
 };
 
 export default function MoodResult({ result, audioFile, audioUrl, onReset }) {
   const audioRef = useRef(null);
-  const [show, setShow] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
   const [srcUrl, setSrcUrl] = useState(null);
-  const [fbState, setFbState] = useState('idle');  // idle | correcting | done
+  const [fbState, setFbState] = useState('idle'); // idle | correcting | done
 
-  // Resolve the audio source: an uploaded File becomes an object URL; a selected
-  // iTunes track already has a preview URL we can play directly.
   useEffect(() => {
     if (audioFile) {
       const url = URL.createObjectURL(audioFile);
@@ -71,19 +50,15 @@ export default function MoodResult({ result, audioFile, audioUrl, onReset }) {
     };
   }, [srcUrl]);
 
-  useEffect(() => { setTimeout(() => setShow(true), 50); }, []);
-
   if (!result) return null;
 
-  const grad    = GRADIENTS[result.mood]  || 'from-violet-500 to-purple-500';
-  const labelBg = LABEL_BG[result.mood]   || 'radial-gradient(circle, #5b21b6, #3b0764)';
-  const glow    = GLOW_COLOR[result.mood] || '#7c3aed';
-  const hasVA    = typeof result.valence === 'number';
+  const color = MOOD_COLOR[result.mood] || '#C2553A';
+  const hasVA = typeof result.valence === 'number';
 
   const togglePlay = () => {
     if (!audioRef.current) return;
     if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
-    else           { audioRef.current.play().catch(() => {}); setIsPlaying(true); }
+    else { audioRef.current.play().catch(() => {}); setIsPlaying(true); }
   };
 
   const seekTo = (e) => {
@@ -103,76 +78,74 @@ export default function MoodResult({ result, audioFile, audioUrl, onReset }) {
   };
 
   return (
-    <div className={`w-full max-w-xl mx-auto transition-all duration-700 ${show ? 'opacity-100 scale-100' : 'opacity-0 scale-95'}`}>
-      <div className="bg-gray-900 border border-gray-800 rounded-2xl p-8 md:p-10">
+    <motion.div variants={cardIn} initial="hidden" animate="show" className="w-full max-w-xl mx-auto">
+      <button
+        onClick={onReset}
+        className="flex items-center gap-1.5 text-ink-soft hover:text-ink text-sm font-medium mb-4 cursor-pointer transition-colors"
+      >
+        <ArrowLeft className="w-4 h-4" strokeWidth={2} /> New search
+      </button>
 
+      <div className="card p-6 md:p-8">
         <audio ref={audioRef} src={srcUrl || ''} preload="auto" className="hidden" />
 
-        {/* Vinyl disc + scrubber */}
+        {/* Now playing */}
         {srcUrl && (
-          <div className="mb-6">
-            <VinylDisc
-              isPlaying={isPlaying}
-              onToggle={togglePlay}
-              labelBg={labelBg}
-              glowColor={glow}
-              emoji={result.mood_emoji}
-              bottomText={result.mood}
-            />
-            <div className="h-2 bg-gray-800 rounded-full cursor-pointer group relative mt-4" onClick={seekTo}>
-              <div className="h-full rounded-full" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%', background: glow }}>
-                <div className="absolute right-0 top-1/2 -translate-y-1/2 w-3 h-3 rounded-full bg-white shadow opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className="flex items-center gap-4 mb-7">
+            <button
+              onClick={togglePlay}
+              className="w-14 h-14 rounded-xl2 flex items-center justify-center shrink-0 cursor-pointer transition-transform active:scale-95"
+              style={{ background: color }}
+            >
+              {isPlaying ? <Pause className="w-6 h-6 text-white" /> : <Play className="w-6 h-6 text-white ml-0.5" />}
+            </button>
+            <div className="flex-1 min-w-0">
+              {result.title && (
+                <p className="text-ink font-semibold truncate">{result.title}</p>
+              )}
+              {result.artist && <p className="text-ink-soft text-sm truncate">{result.artist}</p>}
+              <div className="mt-2 h-1.5 bg-line rounded-full cursor-pointer relative" onClick={seekTo}>
+                <div className="h-full rounded-full" style={{ width: duration ? `${(currentTime / duration) * 100}%` : '0%', background: color }} />
+              </div>
+              <div className="flex justify-between text-ink-faint text-[11px] font-medium mt-1">
+                <span>{fmt(currentTime)}</span>
+                <span>{duration ? fmt(duration) : '0:00'}</span>
               </div>
             </div>
-            <div className="flex justify-between text-gray-500 text-xs font-mono mt-1 mb-3">
-              <span>{fmt(currentTime)}</span>
-              <span>{duration ? fmt(duration) : '0:00'}</span>
-            </div>
-            {isPlaying && (
-              <div className="flex justify-center">
-                <button onClick={togglePlay} className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: glow }}>
-                  <Pause className="w-4 h-4 text-white" />
-                </button>
-              </div>
-            )}
-            <div className="border-t border-gray-800 mt-5 mb-5" />
           </div>
         )}
 
-        {/* Track title (when analysing an iTunes selection) */}
-        {result.title && (
-          <p className="text-center text-gray-400 text-sm mb-2">
-            <span className="text-white font-medium">{result.title}</span>
-            {result.artist ? ` — ${result.artist}` : ''}
-          </p>
-        )}
-
-        {/* Mood name + description + quadrant */}
-        <div className="text-center mb-6">
-          {!srcUrl && (
-            <div className="text-7xl md:text-8xl mb-4 animate-bounce" style={{ animationDuration: '2s' }}>
-              {result.mood_emoji}
-            </div>
-          )}
-          <h2 className={`text-4xl md:text-5xl font-display font-bold gradient-text bg-gradient-to-r ${grad}`}>
+        {/* Mood verdict */}
+        <div className="text-center mb-7">
+          <p className="text-ink-soft text-xs uppercase tracking-wide font-semibold">This song feels</p>
+          <motion.h2
+            initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease, delay: 0.1 }}
+            className="font-display text-5xl font-bold mt-1 tracking-tight"
+            style={{ color }}
+          >
             {result.mood}
-          </h2>
-          <p className="text-gray-400 mt-2 text-lg">{result.mood_description}</p>
+          </motion.h2>
+          {result.mood_description && (
+            <p className="text-ink-soft mt-1.5">{result.mood_description}</p>
+          )}
           {result.quadrant && (
-            <span className="inline-block mt-3 text-xs font-mono text-gray-500 bg-gray-800/60 px-3 py-1 rounded-full">
+            <span
+              className="inline-block mt-3 text-xs font-medium px-2.5 py-1 rounded-full border"
+              style={{ color, borderColor: `${color}40`, background: `${color}12` }}
+            >
               {result.quadrant}
             </span>
           )}
         </div>
 
-        {/* Valence/arousal circumplex */}
+        {/* Circumplex */}
         {hasVA && (
-          <div className="mb-8">
+          <div className="mb-7">
             <ValenceArousalPlot
               valence={result.valence}
               arousal={result.arousal}
               mood={result.mood}
-              color={glow}
+              color={color}
               similar={result.similar}
             />
           </div>
@@ -180,84 +153,71 @@ export default function MoodResult({ result, audioFile, audioUrl, onReset }) {
 
         {/* Confidence */}
         <div className="mb-2">
-          <div className="flex justify-between items-center mb-2">
-            <span className="text-gray-400 text-sm font-medium">Consistency</span>
-            <span className="text-white font-bold text-lg">{(result.confidence * 100).toFixed(1)}%</span>
+          <div className="flex justify-between items-baseline mb-1.5">
+            <span className="text-ink-soft text-sm font-medium">Confidence</span>
+            <span className="text-ink font-bold">{(result.confidence * 100).toFixed(0)}%</span>
           </div>
-          <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
-            <div className={`h-full bg-gradient-to-r ${grad} rounded-full transition-all duration-[1500ms] ease-out`}
-              style={{ width: show ? `${result.confidence * 100}%` : '0%' }} />
+          <div className="h-2 bg-line rounded-full overflow-hidden">
+            <motion.div
+              className="h-full rounded-full"
+              style={{ background: color }}
+              initial={{ width: 0 }}
+              animate={{ width: `${result.confidence * 100}%` }}
+              transition={{ duration: 1, ease, delay: 0.3 }}
+            />
           </div>
-          {result.n_segments && (
-            <p className="text-gray-600 text-[11px] mt-1">
-              from {result.n_segments} time segments · agreement-based
-            </p>
-          )}
         </div>
 
-        {/* Human-in-the-loop feedback — every verdict becomes a training example */}
+        {/* Feedback */}
         {result.analysis_id && (
-          <div className="mt-6 mb-2 rounded-xl bg-gray-800/40 border border-gray-800 p-4">
+          <div className="mt-6 rounded-xl2 bg-paper border border-line p-4">
             {fbState === 'done' ? (
-              <p className="text-center text-emerald-400 text-sm flex items-center justify-center gap-2">
-                <Check className="w-4 h-4" /> Thanks — the model learns from this.
+              <p className="text-center text-relaxed text-sm font-medium flex items-center justify-center gap-2">
+                <Check className="w-4 h-4" /> Thanks — that helps the model improve.
               </p>
             ) : fbState === 'correcting' ? (
               <div className="text-center">
-                <p className="text-gray-400 text-sm mb-3">What mood is it really?</p>
+                <p className="text-ink-soft text-sm mb-3">What does it actually feel like?</p>
                 <div className="flex flex-wrap justify-center gap-2">
                   {MOODS.map((m) => (
                     <button key={m} onClick={() => sendFeedback(false, m)}
-                      className="px-3 py-1.5 rounded-full text-xs font-medium bg-gray-800 text-gray-300
-                                 border border-gray-700 hover:border-violet-500 hover:text-white transition-colors">
+                      className="px-3 py-1.5 rounded-lg text-sm font-medium bg-card text-ink border border-line
+                                 hover:border-clay hover:text-clay transition-colors cursor-pointer">
                       {m}
                     </button>
                   ))}
                 </div>
               </div>
             ) : (
-              <div className="flex items-center justify-center gap-3">
-                <span className="text-gray-400 text-sm">Is <span className="text-white font-medium">{result.mood}</span> right?</span>
+              <div className="flex items-center justify-center gap-3 flex-wrap">
+                <span className="text-ink-soft text-sm">Does <span className="text-ink font-medium">{result.mood}</span> sound right?</span>
                 <button onClick={() => sendFeedback(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
-                             bg-gray-800 text-gray-300 hover:bg-emerald-700 hover:text-white transition-colors">
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium
+                             bg-card border border-line text-ink hover:border-relaxed hover:text-relaxed transition-colors cursor-pointer">
                   <ThumbsUp className="w-3.5 h-3.5" /> Yes
                 </button>
                 <button onClick={() => setFbState('correcting')}
-                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-800 text-gray-300
-                             hover:bg-gray-700 hover:text-white transition-colors">
-                  Fix it
+                  className="px-3 py-1.5 rounded-lg text-sm font-medium bg-card border border-line text-ink-soft
+                             hover:text-ink hover:border-line-strong transition-colors cursor-pointer">
+                  Not quite
                 </button>
               </div>
             )}
           </div>
         )}
 
-        {/* Similar songs from the corpus */}
+        {/* Similar songs */}
         {result.similar?.length > 0 && (
-          <>
-            <div className="border-t border-gray-800 mt-8" />
+          <div className="mt-7 pt-6 border-t border-line">
             <CorpusTracks
               tracks={result.similar}
               heading="Songs that feel like this"
-              subheading="Nearest neighbours in emotion space · 30s previews"
-              accent={glow}
+              subheading="Closest matches in emotion · 30-second previews"
+              accent={color}
             />
-          </>
+          </div>
         )}
-
-        {/* Model badge */}
-        <div className="mt-6 flex justify-center">
-          <span className="text-gray-700 text-xs font-mono bg-gray-800/50 px-3 py-1 rounded-full">
-            🎚️ CLAP + valence/arousal
-          </span>
-        </div>
-
-        <button onClick={onReset}
-          className="mt-6 w-full py-3.5 rounded-xl border border-gray-700 text-gray-400 hover:border-gray-500 hover:text-white hover:bg-gray-800 transition-all duration-200 font-medium">
-          ← Analyze Another Song
-        </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

@@ -36,6 +36,11 @@ import models  # This import triggers SQLAlchemy to register the models
 from schemas import (
     PredictResponse, HistoryResponse, PredictionRecord,
     AnalyzeResponse, AnalyzeTrackRequest, MoodFeedbackRequest,
+    GoogleAuthRequest, UserOut,
+)
+from auth import (
+    verify_google_credential, upsert_user, create_app_token,
+    get_current_user, get_optional_user,
 )
 
 # CLAP valence/arousal engine (the redesign). Loaded opportunistically — if torch/
@@ -394,16 +399,37 @@ def capabilities():
 
 
 # ─────────────────────────────────────────────
+# Auth (Google sign-in)
+# ─────────────────────────────────────────────
+
+@app.post("/auth/google")
+def auth_google(req: GoogleAuthRequest, db: Session = Depends(get_db)):
+    """Exchange a Google ID token for an app session JWT."""
+    claims = verify_google_credential(req.credential)
+    user = upsert_user(db, claims)
+    token = create_app_token(user)
+    return {"token": token, "user": UserOut.model_validate(user)}
+
+
+@app.get("/auth/me", response_model=UserOut)
+def auth_me(user=Depends(get_current_user)):
+    """Return the currently authenticated user (401 if not signed in)."""
+    return user
+
+
+# ─────────────────────────────────────────────
 # Dimensional-emotion (CLAP valence/arousal) endpoints
 # ─────────────────────────────────────────────
 
 def _persist_analysis(db: Session, result: dict, source_type: str,
-                      title: str | None = None, artist: str | None = None) -> int | None:
+                      title: str | None = None, artist: str | None = None,
+                      user_id: int | None = None) -> int | None:
     """Save the analysis (with its embedding) so it can later be confirmed/corrected
     and become a training example. Returns the new row id, or None if the DB write
     fails (analysis still succeeds — persistence is best-effort)."""
     try:
         rec = models.MoodAnalysis(
+            user_id=user_id,
             source_type=source_type, title=title, artist=artist,
             valence=result["valence"], arousal=result["arousal"],
             mood=result["mood"], quadrant=result["quadrant"],
@@ -455,7 +481,8 @@ def _va_to_response(
 
 
 @app.post("/analyze/upload", response_model=AnalyzeResponse)
-async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get_db),
+                         user=Depends(get_optional_user)):
     """Analyse an uploaded audio file's emotion with the CLAP valence/arousal engine."""
     if not _va_available:
         raise HTTPException(status_code=503, detail="CLAP V/A engine not available")
@@ -465,7 +492,8 @@ async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get
         with open(temp_filename, "wb") as buf:
             shutil.copyfileobj(file.file, buf)
         result = _va_analyze(temp_filename)
-        analysis_id = _persist_analysis(db, result, "upload", title=file.filename)
+        analysis_id = _persist_analysis(db, result, "upload", title=file.filename,
+                                        user_id=user.id if user else None)
         return _va_to_response(result, title=file.filename, analysis_id=analysis_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
@@ -475,7 +503,8 @@ async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get
 
 
 @app.post("/analyze/track", response_model=AnalyzeResponse)
-async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db)):
+async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db),
+                        user=Depends(get_optional_user)):
     """Analyse an iTunes track by its 30 s preview URL (the core product flow).
 
     Downloads the preview server-side, runs CLAP + the valence/arousal head, and
@@ -498,7 +527,8 @@ async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db))
 
     try:
         result = _va_analyze(temp_filename)
-        analysis_id = _persist_analysis(db, result, "track", title=req.title, artist=req.artist)
+        analysis_id = _persist_analysis(db, result, "track", title=req.title, artist=req.artist,
+                                        user_id=user.id if user else None)
         return _va_to_response(result, title=req.title, artist=req.artist, analysis_id=analysis_id)
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
@@ -567,16 +597,20 @@ def va_feedback(analysis_id: int, req: MoodFeedbackRequest, db: Session = Depend
 
 
 @app.get("/va/history")
-def va_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Depends(get_db)):
-    """Recent analyses with their feedback status — the active replacement for the
-    old passive history list."""
+def va_history(limit: int = Query(default=20, ge=1, le=100),
+               db: Session = Depends(get_db), user=Depends(get_current_user)):
+    """The signed-in user's analysed songs with mood + confidence + feedback status.
+    The active, personalised replacement for the old passive history list."""
     rows = (
         db.query(models.MoodAnalysis)
+        .filter(models.MoodAnalysis.user_id == user.id)
         .order_by(models.MoodAnalysis.created_at.desc())
         .limit(limit)
         .all()
     )
-    fb = {f.analysis_id: f for f in db.query(models.MoodFeedback).all()}
+    ids = [r.id for r in rows]
+    fb = {f.analysis_id: f for f in
+          db.query(models.MoodFeedback).filter(models.MoodFeedback.analysis_id.in_(ids)).all()} if ids else {}
     items = []
     for r in rows:
         f = fb.get(r.id)
@@ -589,7 +623,8 @@ def va_history(limit: int = Query(default=20, ge=1, le=100), db: Session = Depen
                 "correct": f.correct, "corrected_mood": f.corrected_mood,
             },
         })
-    return {"total": db.query(models.MoodAnalysis).count(), "analyses": items}
+    total = db.query(models.MoodAnalysis).filter(models.MoodAnalysis.user_id == user.id).count()
+    return {"total": total, "analyses": items}
 
 
 @app.get("/va/feedback/stats")

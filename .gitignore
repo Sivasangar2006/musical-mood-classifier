@@ -49,6 +49,11 @@ dist
 dist-ssr
 *.local
 
+# Local tool caches / session state (never commit)
+frontend/.npm-cache/
+.npm-cache/
+.claude/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -30,6 +30,19 @@ class FeedbackLog(Base):
     created_at    = Column(DateTime(timezone=True), server_default=func.now())
 
 
+# ─── Users (Google OAuth) ────────────────────────────────────────────────────
+
+class User(Base):
+    __tablename__ = "users"
+
+    id         = Column(Integer, primary_key=True, index=True)
+    google_sub = Column(String, unique=True, index=True, nullable=False)  # Google's stable user id
+    email      = Column(String, index=True)
+    name       = Column(String, nullable=True)
+    picture    = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
 # ─── Dimensional-emotion engine: analyses + human-in-the-loop feedback ───────────
 
 class MoodAnalysis(Base):
@@ -39,6 +52,7 @@ class MoodAnalysis(Base):
     __tablename__ = "mood_analyses"
 
     id          = Column(Integer, primary_key=True, index=True)
+    user_id     = Column(Integer, index=True, nullable=True)   # null = anonymous
     source_type = Column(String, default="track")   # "track" | "upload"
     title       = Column(String, nullable=True)
     artist      = Column(String, nullable=True)

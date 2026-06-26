@@ -9,6 +9,25 @@ const client = axios.create({
     timeout: 300000, // 5 minutes — full song analysis can take a while
 });
 
+// Attach the session JWT (set at login) to every request.
+client.interceptors.request.use((config) => {
+    const token = localStorage.getItem('mw_token');
+    if (token) config.headers.Authorization = `Bearer ${token}`;
+    return config;
+});
+
+/** Exchange a Google ID token for an app session. Returns { token, user }. */
+export const authGoogle = async (credential) => {
+    const response = await client.post('/auth/google', { credential });
+    return response.data;
+};
+
+/** Fetch the current user (401 if not signed in). */
+export const getMe = async () => {
+    const response = await client.get('/auth/me');
+    return response.data;
+};
+
 /**
  * Upload an audio file and get back a mood prediction.
  * 

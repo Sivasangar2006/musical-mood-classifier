@@ -1,100 +1,117 @@
 /**
- * SongSearch
- * The core product flow: search iTunes for a song, pick one, and analyse its
- * emotion with the CLAP valence/arousal engine.
+ * SongSearch — live typeahead. Suggests songs as you type (debounced), pick one
+ * to read its mood. No submit button, no jargon.
  */
 
-import { useState } from 'react';
-import { Search, Loader2, Sparkles } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Search, Loader2, ArrowRight } from 'lucide-react';
 import { searchSongs, analyzeTrack } from '../api/client.js';
+import { popover } from '../lib/motion.js';
 import MusicLoader from './MusicLoader.jsx';
 
 export default function SongSearch({ onResult }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
-  const [searching, setSearching] = useState(false);
-  const [analyzing, setAnalyzing] = useState(null); // track being analysed
+  const [loading, setLoading] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [analyzing, setAnalyzing] = useState(null);
   const [error, setError] = useState(null);
+  const boxRef = useRef(null);
 
-  const handleSearch = async (e) => {
-    e.preventDefault();
-    if (!query.trim()) return;
-    setSearching(true); setError(null); setResults([]);
-    try {
-      const tracks = await searchSongs(query.trim(), 10);
-      setResults(tracks.filter((t) => t.preview_url));
-      if (!tracks.length) setError('No songs found. Try another search.');
-    } catch {
-      setError('Search failed. Is the backend running?');
-    } finally {
-      setSearching(false);
-    }
-  };
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setResults([]); setOpen(false); return; }
+    setLoading(true);
+    const t = setTimeout(async () => {
+      try {
+        const tracks = await searchSongs(q, 8);
+        setResults(tracks.filter((x) => x.preview_url));
+        setOpen(true);
+      } catch {
+        setError('Search is unavailable right now. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  useEffect(() => {
+    const onClick = (e) => { if (boxRef.current && !boxRef.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
 
   const handleSelect = async (track) => {
-    setAnalyzing(track); setError(null);
+    setOpen(false); setAnalyzing(track); setError(null);
     try {
       const result = await analyzeTrack(track);
       onResult(result, track);
     } catch (err) {
-      setError(err.response?.data?.detail || 'Analysis failed. Is the backend running?');
+      setError(err.response?.data?.detail || 'Could not analyse that track. Please try another.');
       setAnalyzing(null);
     }
   };
 
   if (analyzing) {
     return (
-      <div className="card p-10 max-w-xl mx-auto animate-scale-in">
-        <MusicLoader text={`Analysing "${analyzing.title}"…`} />
-        <p className="text-center text-gray-600 text-xs mt-3">
-          Running CLAP + valence/arousal model on the 30s preview
-        </p>
+      <div className="card p-10 max-w-xl mx-auto">
+        <MusicLoader text={`Listening to “${analyzing.title}”…`} />
       </div>
     );
   }
 
   return (
-    <div className="w-full max-w-xl mx-auto animate-fade-in-up">
-      <form onSubmit={handleSearch} className="flex gap-2">
-        <div className="flex-1 relative">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-600" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search a song to analyse — e.g. Shape of You"
-            className="w-full pl-10 pr-3 py-3.5 bg-gray-900 border border-gray-700 rounded-xl
-                       text-white placeholder-gray-600 focus:outline-none focus:border-violet-500 transition-colors"
-          />
-        </div>
-        <button type="submit" disabled={searching}
-          className="px-5 py-3.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold transition-colors disabled:opacity-50">
-          {searching ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Search'}
-        </button>
-      </form>
+    <div ref={boxRef} className="w-full max-w-xl mx-auto relative">
+      <div className="relative">
+        {loading
+          ? <Loader2 className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-clay animate-spin" />
+          : <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-ink-faint" strokeWidth={2} />}
+        <input
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onFocus={() => results.length && setOpen(true)}
+          placeholder="Search a song or artist…"
+          className="w-full pl-12 pr-4 h-14 bg-card border border-line-strong rounded-xl2 text-ink text-base
+                     placeholder-ink-faint shadow-card focus:outline-none focus:border-clay
+                     focus:ring-2 focus:ring-clay/20 transition-shadow"
+        />
+      </div>
 
-      {error && <p className="text-red-400 text-sm text-center mt-3">{error}</p>}
+      {error && <p className="text-energetic text-sm text-center mt-3">{error}</p>}
 
-      {results.length > 0 && (
-        <div className="mt-4 space-y-2">
-          {results.map((track) => (
-            <button key={track.id} onClick={() => handleSelect(track)}
-              className="w-full flex items-center gap-3 p-3 rounded-xl bg-gray-900 border border-gray-800
-                         hover:border-violet-600 hover:bg-gray-800/80 transition-all text-left group">
-              {track.album_art
-                ? <img src={track.album_art} alt={track.title} className="w-12 h-12 rounded-lg object-cover shrink-0" />
-                : <div className="w-12 h-12 rounded-lg bg-gray-700 flex items-center justify-center shrink-0 text-gray-500">♪</div>}
-              <div className="flex-1 min-w-0">
-                <p className="text-white text-sm font-medium truncate">{track.title}</p>
-                <p className="text-gray-400 text-xs truncate">{track.artist}</p>
-              </div>
-              <span className="flex items-center gap-1 text-violet-400 text-xs font-medium opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                <Sparkles className="w-3.5 h-3.5" /> Analyse
-              </span>
-            </button>
-          ))}
-        </div>
-      )}
+      <AnimatePresence>
+        {open && results.length > 0 && (
+          <motion.div
+            variants={popover} initial="hidden" animate="show" exit="exit"
+            className="absolute z-30 mt-2 w-full bg-card border border-line rounded-xl2 overflow-hidden shadow-pop"
+          >
+            {results.map((track) => (
+              <button
+                key={track.id}
+                onClick={() => handleSelect(track)}
+                className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-paper transition-colors text-left
+                           group cursor-pointer border-b border-line last:border-0"
+              >
+                {track.album_art
+                  ? <img src={track.album_art} alt="" className="w-10 h-10 rounded-md object-cover shrink-0 border border-line" />
+                  : <div className="w-10 h-10 rounded-md bg-paper border border-line flex items-center justify-center shrink-0 text-ink-faint text-sm">♪</div>}
+                <div className="flex-1 min-w-0">
+                  <p className="text-ink text-sm font-medium truncate">{track.title}</p>
+                  <p className="text-ink-soft text-xs truncate">{track.artist}</p>
+                </div>
+                <ArrowRight
+                  className="w-4 h-4 text-clay opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0
+                             transition-all shrink-0"
+                  strokeWidth={2.25}
+                />
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

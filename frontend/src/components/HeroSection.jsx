@@ -1,35 +1,49 @@
+import { motion } from 'framer-motion';
+import { ease } from '../lib/motion.js';
+import Waveform from './Waveform.jsx';
+
 export default function HeroSection() {
   return (
-    <section className="text-center pt-16 pb-12 px-4 animate-fade-in-up">
-      {/* Decorative badge */}
+    <section className="dot-grid pt-14 pb-6 text-center">
+      <motion.span
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, ease }}
+        className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide uppercase
+                   text-clay bg-clay-wash border border-clay/20 rounded-full px-3 py-1"
+      >
+        <span className="w-1.5 h-1.5 rounded-full bg-clay" />
+        Music, by feeling
+      </motion.span>
 
+      <motion.h1
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease, delay: 0.05 }}
+        className="font-display text-4xl md:text-[3.25rem] font-bold text-ink leading-[1.08] tracking-tight mt-4"
+      >
+        Hear the feeling
+        <br className="hidden sm:block" />
+        <span className="text-clay"> in any song</span>
+      </motion.h1>
 
-      <h1 className="text-4xl md:text-6xl lg:text-7xl font-display font-bold text-white leading-tight mb-5 tracking-tight">
-        What's the{' '}
-        <span className="gradient-text from-violet-400 via-fuchsia-400 to-pink-400 animated-gradient bg-[length:200%_auto]">
-          mood
-        </span>
-        <br />of your music?
-      </h1>
+      <motion.p
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease, delay: 0.12 }}
+        className="mt-4 text-ink-soft text-base md:text-lg max-w-md mx-auto leading-relaxed"
+      >
+        Search a track to read its mood — then hear songs that feel the same.
+      </motion.p>
 
-      <p className="text-gray-400 text-lg md:text-xl max-w-xl mx-auto leading-relaxed font-light">
-        Upload a song and discover its{' '}
-        <span className="text-gray-200 font-medium">emotional fingerprint</span>
-        {' '}— then find acoustically similar tracks
-      </p>
-
-      {/* Tech badges */}
-      <div className="flex flex-wrap items-center justify-center gap-2 mt-6">
-        {['ResNet18', 'FAISS', 'SVM', 'Librosa', 'Last.fm'].map((t) => (
-          <span
-            key={t}
-            className="text-xs font-mono text-gray-600 bg-gray-900 border border-gray-800
-                       px-2.5 py-1 rounded-full"
-          >
-            {t}
-          </span>
-        ))}
-      </div>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.25 }}
+        className="mt-6 max-w-sm mx-auto"
+      >
+        <Waveform />
+      </motion.div>
     </section>
   );
 }
