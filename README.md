@@ -1,3 +1,13 @@
+---
+title: MoodWave
+emoji: 🎵
+colorFrom: red
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+---
+
 # MoodWave — a dimensional music-emotion engine
 
 MoodWave reads the **emotion of a song** from its audio, places it on a continuous
