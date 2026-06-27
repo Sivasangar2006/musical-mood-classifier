@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 
 # Add the src/ directory to the Python path so we can import extract.py
@@ -824,3 +825,13 @@ async def search_recommendations(
     ]
 
     return {"query": q, "mood": mood, "tracks": tracks}
+
+
+# ─────────────────────────────────────────────
+# Serve the built frontend (single-container deploy, e.g. Hugging Face Spaces).
+# Mounted LAST so it only catches paths not handled by an API route above.
+# No-op in local dev when the frontend hasn't been built into ./static.
+# ─────────────────────────────────────────────
+_STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
+if os.path.isdir(_STATIC_DIR):
+    app.mount("/", StaticFiles(directory=_STATIC_DIR, html=True), name="static")

@@ -1,8 +1,9 @@
 import axios from 'axios';
 
-// In development: Vite proxy forwards /api/* to localhost:8000
-// In production: set VITE_API_URL in your deployment environment
-const BASE_URL = import.meta.env.VITE_API_URL || '/api';
+// Dev: VITE_API_URL points at the local backend (see .env.local).
+// Single-container deploy (e.g. HF Spaces): leave VITE_API_URL empty so the SPA
+// calls the same origin it's served from (FastAPI serves both API and static).
+const BASE_URL = import.meta.env.VITE_API_URL || '';
 
 const client = axios.create({
     baseURL: BASE_URL,

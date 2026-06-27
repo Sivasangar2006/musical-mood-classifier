@@ -1,0 +1,31 @@
+# Keep the build context (and image) small.
+.git
+.claude
+**/__pycache__
+**/*.pyc
+.venv
+venv
+*.log
+
+# Node / build outputs (frontend is built inside the image)
+frontend/node_modules
+frontend/dist
+frontend/.npm-cache
+
+# Secrets and local DBs — never bake these in
+backend/.env
+*.db
+mood_classifier.db
+
+# Bulky artifacts the server does NOT need (training data, caches, per-track files).
+# The small runtime files (va_head.joblib, va_calib.json, itunes_corpus.npz,
+# itunes_meta.json, eval/metrics.json) are NOT ignored and get copied in.
+artifacts/cache
+artifacts/corpus/itunes
+artifacts/deam/deam_clap.npz
+artifacts/figures
+graphify-out
+
+# Docs / prep files not needed at runtime
+MoodWave_Interview_Prep.md
+MoodWave_Interview_DeepDive.md
