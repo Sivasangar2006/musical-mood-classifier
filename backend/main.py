@@ -98,10 +98,10 @@ Base.metadata.create_all(bind=engine)
 # Routes (API Endpoints)
 # ─────────────────────────────────────────────
 
-@app.get("/")
-def root():
-    """Health check endpoint. Returns a simple message to confirm the server is running."""
-    return {"status": "ok", "message": "Mood Classifier API is running"}
+@app.get("/healthz")
+def healthz():
+    """Health check. (Root '/' is reserved for the served frontend.)"""
+    return {"status": "ok", "va_engine": _va_available, "corpus": _rec_available}
 
 
 # ─────────────────────────────────────────────
