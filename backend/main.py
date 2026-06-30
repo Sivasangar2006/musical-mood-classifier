@@ -2,10 +2,10 @@ import os
 import sys
 import json
 import uuid
-import shutil
 import tempfile
 import httpx
 from pathlib import Path
+from urllib.parse import urlparse
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -186,6 +186,61 @@ def _va_to_response(
     )
 
 
+# ─────────────────────────────────────────────
+# Upload security: accept ONLY real audio, size-capped, with no user-controlled
+# file paths and no arbitrary server-side fetches.
+# ─────────────────────────────────────────────
+
+_AUDIO_EXTS = {".mp3", ".wav", ".m4a", ".mp4", ".aac", ".flac", ".ogg", ".oga", ".opus"}
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024  # 20 MB
+# Apple's preview CDN — the only hosts /analyze/track may fetch (anti-SSRF).
+_ALLOWED_PREVIEW_HOSTS = (".apple.com", ".mzstatic.com")
+
+
+def _looks_like_audio(head: bytes) -> bool:
+    """Sniff the file signature so a renamed .txt/.json/script can't pass the
+    extension check. Covers mp3, wav, flac, ogg/opus and the mp4/m4a/aac family."""
+    if head[:3] == b"ID3":                                               return True  # mp3 + ID3
+    if head[:2] in (b"\xff\xfb", b"\xff\xf3", b"\xff\xf2", b"\xff\xe3"):  return True  # mp3 frame
+    if head[:2] in (b"\xff\xf1", b"\xff\xf9"):                           return True  # AAC (ADTS)
+    if head[:4] == b"RIFF" and head[8:12] == b"WAVE":                    return True  # wav
+    if head[:4] == b"fLaC":                                              return True  # flac
+    if head[:4] == b"OggS":                                              return True  # ogg / opus
+    if head[4:8] == b"ftyp":                                             return True  # mp4 / m4a / aac
+    return False
+
+
+async def _save_validated_upload(file: UploadFile) -> tuple[str, str]:
+    """Validate an upload is genuine audio and write it to a server-named temp path.
+    Returns (temp_path, safe_title); raises 4xx on anything that isn't clean audio."""
+    name = os.path.basename(file.filename or "clip")          # strip any path components
+    ext = os.path.splitext(name)[1].lower()
+    if ext not in _AUDIO_EXTS:
+        raise HTTPException(status_code=415,
+                            detail="Unsupported file type. Upload audio (mp3, wav, m4a, flac, ogg).")
+    data = await file.read(_MAX_UPLOAD_BYTES + 1)             # hard size cap before touching disk
+    if len(data) > _MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="File too large (max 20 MB).")
+    if not data:
+        raise HTTPException(status_code=400, detail="Empty file.")
+    if not _looks_like_audio(data[:16]):                     # content sniff, not just extension
+        raise HTTPException(status_code=415, detail="That file isn't a valid audio file.")
+    temp_path = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}{ext}")  # never the user's name
+    with open(temp_path, "wb") as buf:
+        buf.write(data)
+    return temp_path, name
+
+
+def _validate_preview_url(url: str) -> None:
+    """Anti-SSRF: /analyze/track may only fetch Apple's https preview CDN, never an
+    arbitrary or internal URL."""
+    p = urlparse(url)
+    host = (p.hostname or "").lower()
+    if p.scheme != "https" or not any(host == h.lstrip(".") or host.endswith(h)
+                                      for h in _ALLOWED_PREVIEW_HOSTS):
+        raise HTTPException(status_code=400, detail="preview_url must be an Apple preview https URL.")
+
+
 @app.post("/analyze/upload", response_model=AnalyzeResponse)
 async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get_db),
                          user=Depends(get_optional_user)):
@@ -193,14 +248,14 @@ async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get
     if not _va_available:
         raise HTTPException(status_code=503, detail="CLAP V/A engine not available")
 
-    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_{file.filename}")
+    temp_filename, title = await _save_validated_upload(file)
     try:
-        with open(temp_filename, "wb") as buf:
-            shutil.copyfileobj(file.file, buf)
         result = _va_analyze(temp_filename)
-        analysis_id = _persist_analysis(db, result, "upload", title=file.filename,
+        analysis_id = _persist_analysis(db, result, "upload", title=title,
                                         user_id=user.id if user else None)
-        return _va_to_response(result, title=file.filename, analysis_id=analysis_id)
+        return _va_to_response(result, title=title, analysis_id=analysis_id)
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
     finally:
@@ -211,21 +266,21 @@ async def analyze_upload(file: UploadFile = File(...), db: Session = Depends(get
 @app.post("/analyze/track", response_model=AnalyzeResponse)
 async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db),
                         user=Depends(get_optional_user)):
-    """Analyse an iTunes track by its 30 s preview URL (the core product flow).
-
-    Downloads the preview server-side, runs CLAP + the valence/arousal head, and
-    returns the emotion reading with the track metadata echoed back.
-    """
+    """Analyse an iTunes track by its 30 s preview URL (the core product flow)."""
     if not _va_available:
         raise HTTPException(status_code=503, detail="CLAP V/A engine not available")
     if not req.preview_url:
         raise HTTPException(status_code=400, detail="preview_url is required")
+    _validate_preview_url(req.preview_url)
 
-    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}_preview.m4a")
+    temp_filename = os.path.join(tempfile.gettempdir(), f"{uuid.uuid4()}.m4a")
     try:
-        async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+        # No redirects (a redirect could escape the host allow-list); cap the body size.
+        async with httpx.AsyncClient(timeout=20.0, follow_redirects=False) as client:
             resp = await client.get(req.preview_url)
             resp.raise_for_status()
+            if len(resp.content) > _MAX_UPLOAD_BYTES:
+                raise HTTPException(status_code=413, detail="Preview too large.")
             with open(temp_filename, "wb") as buf:
                 buf.write(resp.content)
     except httpx.HTTPError as e:
@@ -236,6 +291,8 @@ async def analyze_track(req: AnalyzeTrackRequest, db: Session = Depends(get_db),
         analysis_id = _persist_analysis(db, result, "track", title=req.title, artist=req.artist,
                                         user_id=user.id if user else None)
         return _va_to_response(result, title=req.title, artist=req.artist, analysis_id=analysis_id)
+    except HTTPException:
+        raise
     except Exception as e:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Analysis failed: {e}")
     finally:
