@@ -53,7 +53,7 @@ export default function VibeSearch() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="e.g. rainy sunday morning coffee"
-          className="flex-1 px-4 h-12 bg-card border border-line-strong rounded-xl2 text-ink
+          className="flex-1 min-w-0 px-4 h-12 bg-card border border-line-strong rounded-xl2 text-ink
                      placeholder-ink-faint shadow-card focus:outline-none focus:border-clay focus:ring-2 focus:ring-clay/20 transition-shadow"
         />
         <button type="submit" disabled={loading}

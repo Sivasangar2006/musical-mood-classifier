@@ -70,7 +70,7 @@ export default function App() {
 
         {!result && (
           <>
-            <div className="max-w-2xl mx-auto px-4 sm:px-6"><div className="border-t border-line" /></div>
+            <div className="max-w-2xl mx-auto px-4 sm:px-6 pt-12"><div className="border-t border-line" /></div>
             <VibeSearch />
             <div className="max-w-2xl mx-auto px-4 sm:px-6"><div className="border-t border-line" /></div>
             <MoodBrowser />
